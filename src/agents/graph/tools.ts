@@ -4,12 +4,50 @@ import { searchExa } from '@/lib/exa';
 import { sendEmail } from '@/lib/email';
 
 /**
+ * Helper: Extract a Singapore address/location from text.
+ */
+function extractLocation(text: string): string | undefined {
+  const patterns = [
+    /(\d+\s+[\w\s]+(?:Road|Street|Avenue|Drive|Lane|Blvd|Way)[^.,\n]*)(?:,?\s*Singapore)?/i,
+    /((?:Tanjong Pagar|Orchard|Marina Bay|Raffles|Bugis|Clarke Quay|Sentosa|Jurong|Novena|Tampines|Changi|Bishan|Chinatown|Little India|Holland Village|Dempsey)[^.,\n]*)/i,
+    /(Singapore\s*\d{6})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return match[1].trim();
+  }
+  return undefined;
+}
+
+/**
+ * Helper: Extract price from text.
+ */
+function extractPrice(text: string): string | undefined {
+  const match = text.match(/\$[\d,.]+(?:\s*(?:\/pax|per\s*pax|per\s*person|\/person))?|SGD\s*[\d,.]+/i);
+  return match ? match[0] : undefined;
+}
+
+/**
+ * Helper: Generate a favicon/thumbnail URL from a website URL.
+ * Uses Google's favicon service as a fallback for images.
+ */
+function extractImageFromUrl(url: string): string {
+  try {
+    const domain = new URL(url).hostname;
+    // Use Google's favicon service for a quick thumbnail
+    return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+  } catch {
+    return '';
+  }
+}
+
+/**
  * LangChain-compatible tools for the agents.
  */
 
 export const searchVenuesTool = new DynamicStructuredTool({
   name: 'search_venues',
-  description: 'Search for event venues in Singapore. Returns real venues with details.',
+  description: 'Search for event venues in Singapore. Returns real venues with details and images. Call multiple times with different queries to find more options.',
   schema: z.object({
     query: z.string().describe('Search query (e.g. "meeting room 40 people Tanjong Pagar")'),
     maxResults: z.number().optional().default(5),
@@ -18,26 +56,31 @@ export const searchVenuesTool = new DynamicStructuredTool({
     const results = await searchExa({ query: `${query} venue Singapore`, numResults: maxResults });
     return JSON.stringify(results.map(r => ({
       name: r.title,
-      description: r.text.slice(0, 150),
+      description: r.text.slice(0, 200),
       url: r.url,
+      location: extractLocation(r.text) || 'Singapore',
+      imageUrl: extractImageFromUrl(r.url),
     })));
   },
 });
 
 export const searchVendorsTool = new DynamicStructuredTool({
   name: 'search_vendors',
-  description: 'Search for event vendors/caterers in Singapore.',
+  description: 'Search for event vendors/caterers in Singapore. Returns real vendors with images and pricing. Call multiple times with different queries to expand options.',
   schema: z.object({
-    query: z.string().describe('Search query (e.g. "halal catering 40 pax")'),
-    category: z.string().describe('Category: catering, photography, AV, decoration'),
+    query: z.string().describe('Search query (e.g. "halal buffet catering 40 pax corporate")'),
+    category: z.string().describe('Category: catering, photography, AV, decoration, entertainment'),
   }),
   func: async ({ query, category }) => {
     const results = await searchExa({ query: `${query} ${category} Singapore`, numResults: 5 });
     return JSON.stringify(results.map(r => ({
       name: r.title,
-      description: r.text.slice(0, 150),
+      description: r.text.slice(0, 200),
       url: r.url,
       category,
+      location: extractLocation(r.text),
+      imageUrl: extractImageFromUrl(r.url),
+      price: extractPrice(r.text),
     })));
   },
 });

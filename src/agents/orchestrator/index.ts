@@ -42,7 +42,6 @@ function extractEventName(message: string): string {
 function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
   const options: OptionCard[] = [];
 
-  // Try to find structured data in the response (numbered lists with URLs)
   const lines = response.split('\n');
   let currentOption: Partial<OptionCard> | null = null;
 
@@ -55,54 +54,74 @@ function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
       }
       currentOption = {
         name: numberedMatch[1].replace(/\*+/g, '').trim(),
-        description: numberedMatch[2].trim(),
+        description: numberedMatch[2].replace(/\*+/g, '').trim(),
         type: toolsUsed.includes('search_vendors') ? 'vendor' : 'venue',
       };
       continue;
     }
 
-    // Match URLs in the current option context
-    const urlMatch = line.match(/https?:\/\/[^\s)]+/);
-    if (urlMatch && currentOption) {
-      currentOption.url = urlMatch[0];
+    if (!currentOption) continue;
+
+    // Match URLs
+    const urlMatch = line.match(/(?:URL|url|Link|link|Source|source)\s*:?\s*(https?:\/\/[^\s)]+)/i);
+    if (urlMatch) {
+      currentOption.url = urlMatch[1];
+      // Generate image from domain
+      try {
+        const domain = new URL(urlMatch[1]).hostname;
+        currentOption.imageUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+      } catch {}
+      continue;
+    }
+
+    // Match bare URLs (not already captured)
+    const bareUrl = line.match(/https?:\/\/[^\s)]+/);
+    if (bareUrl && !currentOption.url) {
+      currentOption.url = bareUrl[0];
+      try {
+        const domain = new URL(bareUrl[0]).hostname;
+        currentOption.imageUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+      } catch {}
     }
 
     // Match price patterns
-    const priceMatch = line.match(/\$[\d,.]+(?:\/pax)?|SGD\s*[\d,.]+/i);
-    if (priceMatch && currentOption) {
-      currentOption.price = priceMatch[0];
+    const priceMatch = line.match(/(?:Price|price|Cost|cost)\s*:?\s*(\$[\d,.]+(?:\s*(?:\/pax|per\s*pax|per\s*person|total))?|SGD\s*[\d,.]+)/i);
+    if (priceMatch) {
+      currentOption.price = priceMatch[1];
+      continue;
+    }
+    // Also catch inline price
+    const inlinePrice = line.match(/\$[\d,.]+(?:\s*(?:\/pax|per\s*pax|per\s*person))?/);
+    if (inlinePrice && !currentOption.price) {
+      currentOption.price = inlinePrice[0];
     }
 
-    // Match location / address patterns (Singapore-specific)
-    if (currentOption) {
-      const locationMatch = line.match(
-        /(?:(?:at|located?\s+at|address:?|📍)\s*)(.+(?:Singapore|Road|Street|Avenue|Drive|Blvd|Lane|Tanjong Pagar|Orchard|Marina|Raffles|Bugis|Clarke Quay|Sentosa|Jurong|Novena|Tampines|Changi|Bishan)[^.\n]*)/i
-      );
-      if (locationMatch && !currentOption.location) {
-        currentOption.location = locationMatch[1].replace(/[*_`]/g, '').trim();
-      }
-      // Also match standalone Singapore address patterns
-      const sgAddressMatch = line.match(
-        /(\d+\s+[\w\s]+(?:Road|Street|Avenue|Drive|Lane|Blvd)[\w\s,#\-]*(?:Singapore\s*\d{6})?)/i
-      );
-      if (sgAddressMatch && !currentOption.location) {
-        currentOption.location = sgAddressMatch[1].trim();
-      }
+    // Match location patterns
+    const locationMatch = line.match(/(?:Location|Address|location|address)\s*:?\s*(.+)/i);
+    if (locationMatch) {
+      currentOption.location = locationMatch[1].replace(/[*_`]/g, '').trim();
+      continue;
+    }
+    // Singapore address patterns
+    const sgAddress = line.match(/((?:\d+\s+)?[\w\s]+(?:Road|Street|Avenue|Drive|Lane|Blvd)[^.,\n]*(?:Singapore)?)/i);
+    if (sgAddress && !currentOption.location) {
+      currentOption.location = sgAddress[1].trim();
+    }
+    // Known Singapore areas
+    const sgArea = line.match(/((?:Tanjong Pagar|Orchard|Marina Bay|Raffles|Clarke Quay|Sentosa|Jurong|Novena|Chinatown|Bugis)[^.,\n]*)/i);
+    if (sgArea && !currentOption.location) {
+      currentOption.location = sgArea[1].trim();
     }
 
-    // Detect category from context
-    if (currentOption && !currentOption.category) {
+    // Detect category
+    if (!currentOption.category) {
       const lowerLine = line.toLowerCase();
-      if (lowerLine.includes('cater') || lowerLine.includes('food') || lowerLine.includes('menu')) {
+      if (lowerLine.includes('cater') || lowerLine.includes('food') || lowerLine.includes('buffet') || lowerLine.includes('menu')) {
         currentOption.category = 'catering';
-      } else if (lowerLine.includes('venue') || lowerLine.includes('hall') || lowerLine.includes('ballroom')) {
+      } else if (lowerLine.includes('venue') || lowerLine.includes('hall') || lowerLine.includes('room')) {
         currentOption.category = 'venue';
-      } else if (lowerLine.includes('photo') || lowerLine.includes('videograph')) {
+      } else if (lowerLine.includes('photo') || lowerLine.includes('video')) {
         currentOption.category = 'photography';
-      } else if (lowerLine.includes('music') || lowerLine.includes('dj') || lowerLine.includes('band')) {
-        currentOption.category = 'music';
-      } else if (lowerLine.includes('décor') || lowerLine.includes('decor') || lowerLine.includes('flower') || lowerLine.includes('floral')) {
-        currentOption.category = 'decoration';
       }
     }
   }

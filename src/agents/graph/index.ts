@@ -20,7 +20,7 @@ function buildGraph() {
     })
     .addEdge('tools', 'orchestrator');
 
-  return graph.compile();
+  return graph.compile(); // LangGraph loops orchestrator → tools until no more tool calls
 }
 
 // Singleton compiled graph
