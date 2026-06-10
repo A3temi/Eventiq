@@ -46,10 +46,8 @@ export const eventStatusMeta: Record<
   { label: string; dot: string }
 > = {
   planning: { label: 'Planning', dot: 'bg-info' },
-  confirmed: { label: 'Confirmed', dot: 'bg-success' },
-  in_progress: { label: 'In progress', dot: 'bg-warning' },
+  'on-going': { label: 'On-going', dot: 'bg-warning' },
   completed: { label: 'Completed', dot: 'bg-success' },
-  draft: { label: 'Draft', dot: 'bg-pending' },
 };
 
 export const eventTypeMeta: Record<EventType, { label: string }> = {

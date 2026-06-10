@@ -25,6 +25,7 @@ export async function GET(
       status: event.status,
       attendeeCount: event.attendeeCount,
       date: event.date,
+      budget: event.budget,
     });
   } catch (error) {
     console.error('Get event details error:', error);

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getEvent, updateEvent } from '@/lib/db/events';
 import { deleteEvent } from '@/lib/db/events';
+import { parseEventStatusForWrite } from '@/lib/event-status';
 
 export async function DELETE(
   _req: NextRequest,
@@ -50,7 +51,15 @@ export async function PATCH(
 
     for (const field of allowedFields) {
       if (field in body) {
-        updates[field] = body[field];
+        if (field === 'status') {
+          const status = parseEventStatusForWrite(body[field]);
+          if (!status) {
+            return NextResponse.json({ error: 'Invalid event status' }, { status: 400 });
+          }
+          updates[field] = status;
+        } else {
+          updates[field] = body[field];
+        }
       }
     }
 

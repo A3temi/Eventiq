@@ -11,6 +11,7 @@ import { ScheduleSection } from './sections/ScheduleSection';
 import { BudgetSection } from './sections/BudgetSection';
 import { TopicsSection } from './sections/TopicsSection';
 import type { EventDetails } from '@/types/event';
+import { normalizeEventStatus } from '@/lib/event-status';
 
 interface EventState {
   details: EventDetails;
@@ -85,11 +86,13 @@ export function WhiteboardView() {
   const hasDate = !!(details.confirmedDate || details.confirmedTime);
   const hasVenue = !!details.confirmedVenue;
   const hasCatering = !!details.confirmedCatering;
+  const attendeeCount = eventState?.attendeeCount ?? 0;
   const hasContacts = !!(details.contacts && details.contacts.length > 0);
+  const hasAttendees = hasContacts || attendeeCount > 0;
   const hasSchedule = !!(details.schedule && details.schedule.length > 0);
   const hasBudget = !!details.budget;
   const hasTopics = !!(details.topics && details.topics.length > 0);
-  const hasAnySections = hasDate || hasVenue || hasCatering || hasContacts || hasSchedule || hasBudget || hasTopics;
+  const hasAnySections = hasDate || hasVenue || hasCatering || hasAttendees || hasSchedule || hasBudget || hasTopics;
 
   return (
     <div className="flex flex-col h-full">
@@ -104,7 +107,7 @@ export function WhiteboardView() {
               <p className="text-xs text-muted-foreground mt-0.5">{eventState.date}</p>
             )}
           </div>
-          <StatusBadge status={eventState?.status || 'draft'} />
+          <StatusBadge status={eventState?.status || 'planning'} />
         </div>
       </div>
 
@@ -132,10 +135,10 @@ export function WhiteboardView() {
               {hasCatering && (
                 <CateringSection catering={details.confirmedCatering!} />
               )}
-              {hasContacts && (
+              {hasAttendees && (
                 <AttendeesSection
-                  contacts={details.contacts!}
-                  totalCount={eventState?.attendeeCount || details.contacts!.length}
+                  contacts={details.contacts ?? []}
+                  totalCount={attendeeCount || details.contacts?.length || 0}
                 />
               )}
             </div>
@@ -163,15 +166,14 @@ export function WhiteboardView() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; className: string }> = {
-    draft: { label: 'Draft', className: 'bg-gray-100 text-gray-600' },
+  const normalized = normalizeEventStatus(status);
+  const config: Record<typeof normalized, { label: string; className: string }> = {
     planning: { label: 'Planning', className: 'bg-blue-100 text-blue-700' },
-    confirmed: { label: 'Confirmed', className: 'bg-green-100 text-green-700' },
-    'in-progress': { label: 'In Progress', className: 'bg-yellow-100 text-yellow-700' },
+    'on-going': { label: 'On-going', className: 'bg-yellow-100 text-yellow-700' },
     completed: { label: 'Completed', className: 'bg-green-100 text-green-700' },
   };
 
-  const { label, className } = config[status] || config.draft;
+  const { label, className } = config[normalized];
 
   return (
     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${className}`}>

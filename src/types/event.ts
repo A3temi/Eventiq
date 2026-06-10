@@ -32,7 +32,7 @@ export interface EventBrief {
   updatedAt: string;
 }
 
-export type EventStatus = 'draft' | 'planning' | 'confirmed' | 'in-progress' | 'completed';
+export type EventStatus = 'planning' | 'completed' | 'on-going';
 
 export interface EventSummary {
   id: string;

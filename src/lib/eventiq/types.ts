@@ -1,4 +1,4 @@
-export type EventStatus = 'planning' | 'confirmed' | 'in_progress' | 'completed' | 'draft';
+export type EventStatus = 'planning' | 'completed' | 'on-going';
 
 export type EventType =
   | 'wedding'

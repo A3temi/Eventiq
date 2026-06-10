@@ -93,7 +93,12 @@ export function OverviewTab({ event, onOpenVendor }: Props) {
   const eventDate = parseISO(event.date);
 
   const hasDetails =
-    event.venue || event.catering || event.attendees || event.budget;
+    event.venue ||
+    event.catering ||
+    event.attendees ||
+    event.budget ||
+    (event.schedule?.length ?? 0) > 0 ||
+    (event.topics?.length ?? 0) > 0;
 
   if (!hasDetails && event.vendors.length === 0) {
     return (
@@ -243,6 +248,25 @@ export function OverviewTab({ event, onOpenVendor }: Props) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Topics / plans */}
+      {event.topics && event.topics.length > 0 && (
+        <div className="card-soft p-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase tracking-wide mb-4">
+            <ListChecks className="h-3.5 w-3.5" /> Topics & plans
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {event.topics.map((topic, idx) => (
+              <span
+                key={`${topic}-${idx}`}
+                className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
+              >
+                {topic}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 

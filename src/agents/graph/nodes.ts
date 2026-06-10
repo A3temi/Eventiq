@@ -1,6 +1,7 @@
 import { SystemMessage, BaseMessage } from '@langchain/core/messages';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { orchestratorTools } from './tools';
+import type { DynamicStructuredTool } from '@langchain/core/tools';
 import type { AgentStateType } from './state';
 import { createPrimaryLLM } from '@/lib/llm';
 
@@ -9,9 +10,9 @@ import { createPrimaryLLM } from '@/lib/llm';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Claude Sonnet — orchestrator (complex reasoning, delegation decisions) */
-function createSonnet() {
+function createSonnet(tools: DynamicStructuredTool[] = orchestratorTools) {
   const llm = createPrimaryLLM();
-  return llm.bindTools(orchestratorTools);
+  return llm.bindTools(tools);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -76,22 +77,30 @@ CRITICAL RULES:
 
 Singapore context: SGT (UTC+8), currency SGD.`;
 
-export async function orchestratorNode(state: AgentStateType) {
-  const llm = createSonnet();
-  const systemMsg = new SystemMessage(ORCHESTRATOR_PROMPT);
-  const response = await llm.invoke([systemMsg, ...state.messages]);
+export function createOrchestratorNode(tools: DynamicStructuredTool[] = orchestratorTools) {
+  return async function orchestratorNode(state: AgentStateType) {
+    const llm = createSonnet(tools);
+    const systemMsg = new SystemMessage(ORCHESTRATOR_PROMPT);
+    const response = await llm.invoke([systemMsg, ...state.messages]);
 
-  return {
-    messages: [response],
-    response: typeof response.content === 'string' ? response.content : '',
+    return {
+      messages: [response],
+      response: typeof response.content === 'string' ? response.content : '',
+    };
   };
 }
+
+export const orchestratorNode = createOrchestratorNode();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TOOL NODE — executes orchestrator's tool calls (delegate_to_agent, etc.)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const orchestratorToolNode = new ToolNode(orchestratorTools);
+export function createOrchestratorToolNode(tools: DynamicStructuredTool[] = orchestratorTools) {
+  return new ToolNode(tools);
+}
+
+export const orchestratorToolNode = createOrchestratorToolNode();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TOOL TRACKING

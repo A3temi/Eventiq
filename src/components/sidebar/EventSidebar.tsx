@@ -8,12 +8,11 @@ import { Plus, Calendar, Circle, Pin, Trash2, MoreHorizontal } from 'lucide-reac
 import { cn, formatDate, timeAgo } from '@/lib/utils';
 import { UserMenu } from './UserMenu';
 import type { EventStatus } from '@/types/event';
+import { normalizeEventStatus } from '@/lib/event-status';
 
 const STATUS_COLORS: Record<EventStatus, string> = {
-  draft: 'text-muted-foreground',
   planning: 'text-blue-500',
-  confirmed: 'text-green-500',
-  'in-progress': 'text-yellow-500',
+  'on-going': 'text-yellow-500',
   completed: 'text-green-500',
 };
 
@@ -110,7 +109,7 @@ export function EventSidebar() {
               >
                 <div className="flex items-center gap-2">
                   {event.pinned && <Pin className="w-3 h-3 text-primary shrink-0" />}
-                  <Circle className={cn('w-2 h-2 fill-current shrink-0', STATUS_COLORS[event.status])} />
+                  <Circle className={cn('w-2 h-2 fill-current shrink-0', STATUS_COLORS[normalizeEventStatus(event.status)])} />
                   <span className="font-medium text-sm truncate">{event.name}</span>
                 </div>
                 {event.summary && (

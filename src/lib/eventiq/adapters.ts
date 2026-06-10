@@ -7,7 +7,7 @@
  * `details.contacts[idx]` shape consumed by PATCH /api/events/[id] {details}.
  */
 
-import type { EventDetails, EventSummary } from '@/types/event';
+import type { EventBrief, EventDetails, EventSummary } from '@/types/event';
 import type {
   EventModel,
   EventStatus,
@@ -19,6 +19,7 @@ import type {
   VendorStatus,
 } from './types';
 import { eventTypeMeta } from './meta';
+import { normalizeEventStatus } from '@/lib/event-status';
 
 /** Frozen contact shape from EventDetails. */
 type BaseContact = NonNullable<EventDetails['contacts']>[number];
@@ -54,19 +55,27 @@ export interface DetailsPayload {
   status: string;
   attendeeCount: number;
   date: string;
+  budget?: EventBrief['budget'];
 }
 
 /* ------------------------------------------------------------------ */
 /* Status mapping                                                      */
 /* ------------------------------------------------------------------ */
 
-const EVENT_STATUSES: EventStatus[] = ['planning', 'confirmed', 'in_progress', 'completed', 'draft'];
-
-/** Real app status ('in-progress') → UI status ('in_progress'); others pass through. */
+/** Normalize persisted API status values into the only UI statuses allowed. */
 export function mapEventStatus(status: string | undefined): EventStatus {
-  if (status === 'in-progress') return 'in_progress';
-  if (EVENT_STATUSES.includes(status as EventStatus)) return status as EventStatus;
-  return 'draft';
+  return normalizeEventStatus(status);
+}
+
+function hasMeaningfulTopLevelBudget(budget: EventBrief['budget'] | undefined): budget is EventBrief['budget'] {
+  if (!budget) return false;
+  if ((budget.total ?? 0) > 0) return true;
+  return (budget.categories ?? []).some(
+    (category) =>
+      (category.allocated ?? 0) > 0 ||
+      (category.committed ?? 0) > 0 ||
+      (category.spent ?? 0) > 0,
+  );
 }
 
 /** Contact status (confirmed/messaging/pending) → UI VendorStatus. */
@@ -413,6 +422,13 @@ export function adaptEvent(summary: EventSummary, payload?: DetailsPayload): Eve
       total: details.budget.total ?? 0,
       committed,
       spent: paidSum,
+    };
+  } else if (hasMeaningfulTopLevelBudget(payload?.budget)) {
+    const categories = payload.budget.categories ?? [];
+    budget = {
+      total: payload.budget.total ?? 0,
+      committed: categories.reduce((sum, category) => sum + (category.committed || 0), 0),
+      spent: categories.reduce((sum, category) => sum + (category.spent || 0), 0),
     };
   }
 

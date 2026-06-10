@@ -2,11 +2,12 @@ import { StateGraph } from '@langchain/langgraph';
 import { HumanMessage, AIMessage } from '@langchain/core/messages';
 import { AgentState } from './state';
 import {
-  orchestratorNode,
-  orchestratorToolNode,
+  createOrchestratorNode,
+  createOrchestratorToolNode,
   trackToolsNode,
   orchestratorRouter,
 } from './nodes';
+import { createOrchestratorTools } from './tools';
 
 /**
  * Multi-Agent LangGraph Workflow — TRUE Delegation Architecture
@@ -39,11 +40,12 @@ import {
  * - Own agent loop (calls tools repeatedly until goal is reached)
  * - Uses Claude Haiku (cheap, fast, can loop many times)
  */
-function buildGraph() {
+function buildGraph(options: { eventId?: string } = {}) {
+  const tools = createOrchestratorTools({ eventId: options.eventId });
   const graph = new StateGraph(AgentState)
     // ── Orchestrator + delegation loop ──
-    .addNode('orchestrator', orchestratorNode)
-    .addNode('orchestrator_tools', orchestratorToolNode)
+    .addNode('orchestrator', createOrchestratorNode(tools))
+    .addNode('orchestrator_tools', createOrchestratorToolNode(tools))
     .addNode('orchestrator_track', trackToolsNode)
 
     // Entry point
@@ -66,15 +68,6 @@ function buildGraph() {
 
 type AgentStateType = typeof AgentState.State;
 
-let compiledGraph: ReturnType<typeof buildGraph> | null = null;
-
-function getMainGraph() {
-  if (!compiledGraph) {
-    compiledGraph = buildGraph();
-  }
-  return compiledGraph;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -88,9 +81,10 @@ function getMainGraph() {
  */
 export async function runAgentGraph(
   userMessage: string,
-  conversationHistory: Array<{ role: string; content: string }> = []
+  conversationHistory: Array<{ role: string; content: string }> = [],
+  options: { eventId?: string } = {},
 ): Promise<{ response: string; toolsUsed: string[] }> {
-  const graph = getMainGraph();
+  const graph = buildGraph(options);
 
   const messages = [
     ...conversationHistory.map(m =>

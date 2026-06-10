@@ -1,6 +1,7 @@
 import { PutCommand, GetCommand, UpdateCommand, QueryCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, TABLES, ttl90Days } from '../dynamodb';
 import type { EventBrief, EventStatus } from '@/types/event';
+import { normalizeEventForRead, parseEventStatusForWrite } from '@/lib/event-status';
 import { v4 as uuid } from 'uuid';
 
 export async function createEvent(userId: string, data: Partial<EventBrief>): Promise<EventBrief> {
@@ -16,7 +17,7 @@ export async function createEvent(userId: string, data: Partial<EventBrief>): Pr
     budget: data.budget || { total: 0, currency: 'SGD', categories: [] },
     location: data.location,
     preferences: data.preferences || {},
-    status: 'draft',
+    status: parseEventStatusForWrite(data.status) ?? 'planning',
     createdAt: now,
     updatedAt: now,
   };
@@ -31,7 +32,7 @@ export async function createEvent(userId: string, data: Partial<EventBrief>): Pr
     },
   }));
 
-  return event;
+  return normalizeEventForRead(event);
 }
 
 export async function getEvent(eventId: string): Promise<EventBrief | null> {
@@ -42,7 +43,7 @@ export async function getEvent(eventId: string): Promise<EventBrief | null> {
 
   if (!result.Item) return null;
   const { PK, SK, ttl, ...event } = result.Item;
-  return event as EventBrief;
+  return normalizeEventForRead(event as EventBrief);
 }
 
 export async function updateEvent(eventId: string, updates: Partial<EventBrief>): Promise<void> {
@@ -56,7 +57,13 @@ export async function updateEvent(eventId: string, updates: Partial<EventBrief>)
     const attrValue = `:${key}`;
     expressions.push(`${attrName} = ${attrValue}`);
     names[attrName] = key;
-    values[attrValue] = value;
+    if (key === 'status') {
+      const status = parseEventStatusForWrite(value);
+      if (!status) throw new Error('Invalid event status');
+      values[attrValue] = status;
+    } else {
+      values[attrValue] = value;
+    }
   });
 
   expressions.push('#updatedAt = :updatedAt');
@@ -81,7 +88,7 @@ export async function listUserEvents(userId: string): Promise<EventBrief[]> {
     ScanIndexForward: false,
   }));
 
-  return (result.Items || []).map(({ PK, SK, ttl, ...item }) => item as EventBrief);
+  return (result.Items || []).map(({ PK, SK, ttl, ...item }) => normalizeEventForRead(item as EventBrief));
 }
 
 export async function updateEventStatus(eventId: string, status: EventStatus): Promise<void> {

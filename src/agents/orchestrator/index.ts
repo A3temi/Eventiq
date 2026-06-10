@@ -2,7 +2,7 @@ import { runAgentGraph } from '@/agents/graph';
 import { createEvent, getEvent, updateEvent } from '@/lib/db/events';
 import { createMessage, getRecentMessages } from '@/lib/db/conversations';
 import { getCreditBalance, deductCredits } from '@/lib/db/credits';
-import type { EventBrief, EventDetails } from '@/types/event';
+import type { EventBrief } from '@/types/event';
 import type { OptionCard, ThinkingStep } from '@/types/chat';
 
 interface OrchestrateInput {
@@ -202,41 +202,6 @@ function buildThinkingSteps(toolsUsed: string[]): ThinkingStep[] {
 }
 
 /**
- * Persist confirmed event details to DynamoDB by parsing the agent response.
- */
-async function persistEventDetails(eventId: string, response: string, toolsUsed: string[]): Promise<void> {
-  try {
-    const event = await getEvent(eventId);
-    if (!event) return;
-    const details: EventDetails = event.details || {};
-    let updated = false;
-
-    const dateMatch = response.match(/(?:Saturday|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday)[,\s]+(?:June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?/i);
-    if (dateMatch && !details.confirmedDate) { details.confirmedDate = dateMatch[0]; updated = true; }
-
-    const venueMatch = response.match(/(?:venue|location|place)\s*(?:is|:)\s*\*?\*?([^*\n]+)/i);
-    if (venueMatch && !details.confirmedVenue) { details.confirmedVenue = { name: venueMatch[1].trim() }; updated = true; }
-
-    const cateringMatch = response.match(/(?:catering|food|menu)\s*(?:is|:)\s*\*?\*?([^*\n]+)/i);
-    if (cateringMatch && !details.confirmedCatering) { details.confirmedCatering = { name: cateringMatch[1].trim() }; updated = true; }
-
-    const attendeeMatch = response.match(/(\d+)\s*(?:people|attendees|participants|pax|guests)/i);
-    if (attendeeMatch) {
-      const count = parseInt(attendeeMatch[1]);
-      if (count > 0 && count !== event.attendeeCount) await updateEvent(eventId, { attendeeCount: count });
-    }
-
-    const topicSection = response.match(/(?:topics?|agenda)\s*(?:include|:)\s*([\s\S]*?)(?:\n\n|$)/i);
-    if (topicSection && !details.topics?.length) {
-      const topics = topicSection[1].split('\n').map(l => l.replace(/^[-*•\d.)\s]+/, '').replace(/\*+/g, '').trim()).filter(t => t.length > 3 && t.length < 100);
-      if (topics.length > 0) { details.topics = topics; updated = true; }
-    }
-
-    if (updated) await updateEvent(eventId, { details });
-  } catch (error) { console.error('Failed to persist event details:', error); }
-}
-
-/**
  * Main orchestrator — handles the full message flow:
  * 1. Check credits
  * 2. Load/create event
@@ -294,7 +259,7 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
 
   try {
     // Run the LangGraph multi-agent system
-    const { response, toolsUsed } = await runAgentGraph(message, history);
+    const { response, toolsUsed } = await runAgentGraph(message, history, { eventId: eventId! });
 
     console.log('[Orchestrator] toolsUsed:', toolsUsed);
 
@@ -304,9 +269,8 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
       await deductCredits(userId, toolCost, 'tool_calls', eventId!);
     }
 
-    // Persist event details if save_event_details was called
-    // Actually, ALWAYS try to extract and persist details from the response
-    await persistEventDetails(eventId!, response, toolsUsed);
+    // Event details are persisted only through explicit save_event_details / whiteboard tool calls.
+    // Avoid response-wide heuristic writes so recommendations are not marked as confirmed state.
 
     // Parse structured data from response
     const options = parseOptions(response, toolsUsed);

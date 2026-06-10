@@ -54,9 +54,10 @@ export const useEventModelsStore = create<EventModelsState>((set, get) => ({
           [id]: {
             details: (data.details ?? {}) as EventiqDetails,
             name: data.name ?? '',
-            status: data.status ?? 'draft',
+            status: data.status ?? 'planning',
             attendeeCount: data.attendeeCount ?? 0,
             date: data.date ?? '',
+            budget: data.budget,
           },
         },
       }));
@@ -89,7 +90,7 @@ export const useEventModelsStore = create<EventModelsState>((set, get) => ({
         ...state.detailsById,
         [id]: current
           ? { ...current, details: nextDetails }
-          : { details: nextDetails, name: '', status: 'draft', attendeeCount: 0, date: '' },
+          : { details: nextDetails, name: '', status: 'planning', attendeeCount: 0, date: '' },
       },
     }));
 
