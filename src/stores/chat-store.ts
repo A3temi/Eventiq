@@ -4,6 +4,7 @@ import type { ChatMessage, ApprovalRequest } from '@/types/chat';
 interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
+  historyLoading: boolean;
   pendingApprovals: ApprovalRequest[];
 
   addMessage: (message: ChatMessage) => void;
@@ -12,11 +13,13 @@ interface ChatState {
   addApproval: (approval: ApprovalRequest) => void;
   updateApproval: (id: string, status: ApprovalRequest['status']) => void;
   clearMessages: () => void;
+  loadConversation: (eventId: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   isLoading: false,
+  historyLoading: false,
   pendingApprovals: [],
 
   addMessage: (message) =>
@@ -41,4 +44,20 @@ export const useChatStore = create<ChatState>((set) => ({
     })),
 
   clearMessages: () => set({ messages: [], pendingApprovals: [] }),
+
+  loadConversation: async (eventId: string) => {
+    set({ historyLoading: true, messages: [] });
+    try {
+      const res = await fetch(`/api/events/${eventId}/messages`);
+      if (!res.ok) {
+        set({ historyLoading: false });
+        return;
+      }
+      const data = await res.json();
+      set({ messages: data.messages || [], historyLoading: false });
+    } catch (e) {
+      console.error('Failed to load conversation:', e);
+      set({ historyLoading: false });
+    }
+  },
 }));

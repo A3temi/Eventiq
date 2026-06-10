@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, Shuffle, X, ExternalLink } from 'lucide-react';
+import { ExternalLink, Check, MapPin, DollarSign, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { OptionCard as OptionCardType } from '@/types/chat';
 
@@ -11,207 +10,116 @@ interface OptionCardCarouselProps {
   onShuffle?: () => void;
 }
 
-const categoryIcons: Record<string, string> = {
-  catering: '🍽️',
-  venue: '📍',
-  photography: '📸',
-  music: '🎵',
-  decoration: '🎨',
-  entertainment: '🎭',
-  transport: '🚗',
-  florist: '💐',
-  vendor: '🏪',
+const TYPE_COLORS: Record<string, string> = {
+  venue: 'bg-blue-50 text-blue-700 border-blue-200',
+  vendor: 'bg-purple-50 text-purple-700 border-purple-200',
+  catering: 'bg-orange-50 text-orange-700 border-orange-200',
+  food: 'bg-orange-50 text-orange-700 border-orange-200',
+  result: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  option: 'bg-gray-50 text-gray-700 border-gray-200',
 };
 
-const categoryGradients: Record<string, string> = {
-  catering: 'from-orange-200/60 to-amber-300/40',
-  venue: 'from-blue-200/60 to-indigo-300/40',
-  photography: 'from-purple-200/60 to-pink-300/40',
-  music: 'from-green-200/60 to-teal-300/40',
-  decoration: 'from-rose-200/60 to-fuchsia-300/40',
-  entertainment: 'from-yellow-200/60 to-orange-300/40',
-  transport: 'from-cyan-200/60 to-blue-300/40',
-  florist: 'from-pink-200/60 to-rose-300/40',
-  vendor: 'from-slate-200/60 to-gray-300/40',
-};
-
-function MapPopup({ location, onClose }: { location: string; onClose: () => void }) {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API || '';
-  const query = encodeURIComponent(location + ' Singapore');
-  const embedUrl = `https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${query}`;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="bg-card rounded-xl shadow-lg overflow-hidden w-[90vw] max-w-md"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-3 border-b">
-          <span className="text-sm font-medium truncate">📍 {location}</span>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md hover:bg-accent transition-colors"
-            aria-label="Close map"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        {apiKey ? (
-          <iframe
-            src={embedUrl}
-            className="w-full h-64 border-0"
-            allowFullScreen
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            title={`Map of ${location}`}
-          />
-        ) : (
-          <div className="w-full h-64 flex items-center justify-center text-sm text-muted-foreground">
-            Map unavailable — API key not configured
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SingleOptionCard({
-  option,
-  onSelect,
-}: {
-  option: OptionCardType;
-  onSelect: (option: OptionCardType) => void;
-}) {
-  const [showMap, setShowMap] = useState(false);
-  const category = option.category || option.type || 'vendor';
-  const icon = categoryIcons[category] || '📋';
-  const gradient = categoryGradients[category] || 'from-primary/20 to-accent/30';
-
-  return (
-    <>
-      <div className="rounded-xl border bg-card hover:shadow-md transition-shadow p-0 overflow-hidden flex flex-col">
-        {/* Image area */}
-        {option.imageUrl ? (
-          <div className="h-24 overflow-hidden">
-            <img
-              src={option.imageUrl}
-              alt={option.name}
-              className="w-full h-full object-cover"
-            />
-          </div>
-        ) : (
-          <div className={cn('h-24 bg-gradient-to-br flex items-center justify-center text-2xl', gradient)}>
-            {icon}
-          </div>
-        )}
-
-        {/* Content */}
-        <div className="p-3 flex flex-col flex-1">
-          {/* Category badge */}
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary capitalize w-fit mb-1">
-            {icon} {category}
-          </span>
-
-          {/* Name */}
-          <h4 className="font-semibold text-sm leading-tight line-clamp-1">{option.name}</h4>
-
-          {/* Price */}
-          {option.price && (
-            <p className="text-xs font-medium text-primary mt-0.5">💰 {option.price}</p>
-          )}
-
-          {/* Description */}
-          <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 flex-1">
-            {option.description}
-          </p>
-
-          {/* Location */}
-          {option.location && (
-            <button
-              onClick={() => setShowMap(true)}
-              className="text-[11px] text-primary/80 hover:text-primary underline mt-1 text-left truncate transition-colors"
-            >
-              📍 {option.location}
-            </button>
-          )}
-
-          {/* URL */}
-          {option.url && (
-            <a
-              href={option.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-primary mt-1 transition-colors"
-            >
-              <ExternalLink className="w-2.5 h-2.5" />
-              Source
-            </a>
-          )}
-
-          {/* Select button */}
-          <button
-            onClick={() => onSelect(option)}
-            className="flex items-center justify-center gap-1 w-full mt-2 px-2 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
-          >
-            <Check className="w-3 h-3" />
-            Select
-          </button>
-        </div>
-      </div>
-
-      {showMap && option.location && (
-        <MapPopup location={option.location} onClose={() => setShowMap(false)} />
-      )}
-    </>
-  );
+function getTypeColor(type: string): string {
+  return TYPE_COLORS[type?.toLowerCase()] || TYPE_COLORS.option;
 }
 
 export function OptionCardCarousel({ options, onSelect, onShuffle }: OptionCardCarouselProps) {
-  const [showAll, setShowAll] = useState(false);
-
   if (options.length === 0) return null;
 
-  const maxVisible = 6;
-  const visibleOptions = showAll ? options : options.slice(0, maxVisible);
-  const hasMore = options.length > maxVisible;
-
   return (
-    <div className="mt-3 w-full">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-        {visibleOptions.map((option, idx) => (
-          <SingleOptionCard key={idx} option={option} onSelect={onSelect} />
-        ))}
-      </div>
-
-      {/* Footer actions */}
-      <div className="flex items-center justify-between mt-2">
-        {hasMore && !showAll && (
-          <button
-            onClick={() => setShowAll(true)}
-            className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-          >
-            Show more ({options.length - maxVisible} more)
-          </button>
-        )}
-        {showAll && hasMore && (
-          <button
-            onClick={() => setShowAll(false)}
-            className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-          >
-            Show less
-          </button>
-        )}
-        {!hasMore && <div />}
-
+    <div className="mt-3 space-y-2 w-full">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">
+          {options.length} option{options.length !== 1 ? 's' : ''} found
+        </span>
         {onShuffle && (
           <button
             onClick={onShuffle}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border hover:bg-accent transition-colors"
+            className="text-xs text-primary hover:text-primary/80 transition-colors"
           >
-            <Shuffle className="w-3 h-3" />
-            More options
+            Search for more →
           </button>
         )}
+      </div>
+
+      {/* Cards grid */}
+      <div className="grid gap-2">
+        {options.map((option, idx) => (
+          <div
+            key={idx}
+            className="group relative rounded-lg border bg-card p-3 hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer"
+            onClick={() => onSelect(option)}
+          >
+            <div className="flex items-start gap-3">
+              {/* Number badge */}
+              <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center shrink-0 text-xs font-medium">
+                {idx + 1}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                {/* Top row: type badge + name */}
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={cn(
+                    'text-[10px] font-medium px-1.5 py-0.5 rounded border capitalize',
+                    getTypeColor(option.type)
+                  )}>
+                    {option.type || 'option'}
+                  </span>
+                  {option.score && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                      <Star className="w-2.5 h-2.5 fill-yellow-400 text-yellow-400" />
+                      {option.score}
+                    </span>
+                  )}
+                </div>
+
+                {/* Name */}
+                <h4 className="font-medium text-sm leading-tight truncate">
+                  {option.name}
+                </h4>
+
+                {/* Description */}
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                  {option.description}
+                </p>
+
+                {/* Bottom row: price + url */}
+                <div className="flex items-center gap-3 mt-1.5">
+                  {option.price && (
+                    <span className="flex items-center gap-0.5 text-xs font-medium text-green-700">
+                      <DollarSign className="w-3 h-3" />
+                      {option.price.replace(/^\$/, '')}
+                    </span>
+                  )}
+                  {option.url && (
+                    <a
+                      href={option.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-0.5 text-[11px] text-primary/70 hover:text-primary transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Website
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Select button — visible on hover */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(option);
+                }}
+                className="shrink-0 opacity-0 group-hover:opacity-100 px-2 py-1 text-[11px] font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-all"
+              >
+                <Check className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

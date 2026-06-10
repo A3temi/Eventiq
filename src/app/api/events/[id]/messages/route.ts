@@ -15,15 +15,17 @@ export async function GET(
     }
 
     const { id } = await params;
+
+    // Verify ownership
     const event = await getEvent(id);
     if (!event || event.userId !== session.user.email) {
-      return NextResponse.json({ messages: [] });
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
     const messages = await getConversation(id, 50);
     return NextResponse.json({ messages });
   } catch (error) {
-    console.error('Messages API error:', error);
-    return NextResponse.json({ messages: [] });
+    console.error('Get messages error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

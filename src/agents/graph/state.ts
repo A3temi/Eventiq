@@ -2,23 +2,28 @@ import { Annotation } from '@langchain/langgraph';
 import { BaseMessage } from '@langchain/core/messages';
 
 /**
- * The shared state for the multi-agent graph.
- * Every node reads/writes to this state.
+ * Shared state for the multi-agent graph.
+ * The orchestrator reads user intent and routes to specialized agents.
+ * Each agent writes its results back to state.
  */
 export const AgentState = Annotation.Root({
-  // Conversation messages (accumulates)
+  // Full conversation (accumulates across all nodes)
   messages: Annotation<BaseMessage[]>({
     reducer: (prev, next) => [...prev, ...next],
     default: () => [],
   }),
 
-  // Which agent should handle next
+  // Routing: which agent(s) should execute next
   nextAgent: Annotation<string>({
     reducer: (_prev, next) => next,
     default: () => 'orchestrator',
   }),
 
-  // Event context
+  // Event context extracted by orchestrator
+  eventId: Annotation<string>({
+    reducer: (_prev, next) => next || _prev,
+    default: () => '',
+  }),
   eventName: Annotation<string>({
     reducer: (_prev, next) => next || _prev,
     default: () => '',
@@ -31,22 +36,22 @@ export const AgentState = Annotation.Root({
     reducer: (_prev, next) => next || _prev,
     default: () => 0,
   }),
-  venue: Annotation<string>({
+  selectedVenue: Annotation<string>({
     reducer: (_prev, next) => next || _prev,
     default: () => '',
   }),
-  budget: Annotation<string>({
+  budgetTotal: Annotation<string>({
     reducer: (_prev, next) => next || _prev,
     default: () => '',
   }),
 
-  // Tool results
-  searchResults: Annotation<any[]>({
-    reducer: (_prev, next) => next,
+  // Tools that were used across all agents in this turn
+  toolsUsed: Annotation<string[]>({
+    reducer: (prev, next) => [...prev, ...next],
     default: () => [],
   }),
 
-  // Final response to user
+  // Final response to user (written by the last agent to run)
   response: Annotation<string>({
     reducer: (_prev, next) => next,
     default: () => '',

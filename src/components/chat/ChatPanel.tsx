@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSession, signIn } from 'next-auth/react';
+import ReactMarkdown from 'react-markdown';
 import { useChatStore } from '@/stores/chat-store';
 import { useAppStore } from '@/stores/app-store';
 import { Send, Paperclip, Bot, User, Loader2, Lock } from 'lucide-react';
@@ -21,7 +22,7 @@ export function ChatPanel() {
   const [editText, setEditText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { data: session, status } = useSession();
-  const { messages, isLoading } = useChatStore();
+  const { messages, isLoading, historyLoading, pendingApprovals } = useChatStore();
   const activeEventId = useAppStore((s) => s.activeEventId);
   const fetchEvents = useAppStore((s) => s.fetchEvents);
 
@@ -209,7 +210,12 @@ export function ChatPanel() {
     <div className="flex flex-col h-full">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
+        {historyLoading ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground mt-2">Loading conversation...</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
               <Bot className="w-8 h-8 text-primary" />
@@ -259,35 +265,9 @@ export function ChatPanel() {
                     )}
                   </div>
                 )}
-
-                {/* Inline edit or normal message display */}
-                {editingId === msg.id ? (
-                  <div className="flex flex-col gap-2">
-                    <textarea
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border bg-background text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      rows={3}
-                      autoFocus
-                    />
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={handleCancelEdit}
-                        className="px-3 py-1 text-xs rounded border hover:bg-accent text-foreground"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => handleEditSubmit(msg.id)}
-                        className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90"
-                      >
-                        Send
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <MarkdownMessage content={msg.content} isUser={msg.role === 'user'} />
-                )}
+                <div className="text-sm prose prose-sm prose-neutral max-w-none dark:prose-invert [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>li]:my-0.5 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&_a]:text-primary [&_a]:underline">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
 
                 {/* Thinking trace */}
                 {msg.metadata?.thinking && msg.metadata.thinking.length > 0 && (

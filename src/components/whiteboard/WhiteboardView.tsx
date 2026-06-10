@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -10,22 +10,10 @@ import ReactFlow, {
   type Edge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import {
-  CenterStatusNode,
-  DateTimeNode,
-  VenueNode,
-  CateringNode,
-  ScheduleNode,
-  ContactsNode,
-  TopicsNode,
-} from './nodes';
+import { WhiteboardNodeCard } from './WhiteboardNodeCard';
+import { useChatStore } from '@/stores/chat-store';
 import { useAppStore } from '@/stores/app-store';
-import type { EventDetails } from '@/types/event';
-
-/* ─────────────────────────────────────────────
-   Node types must be defined outside the component
-   to avoid re-registration on every render.
-   ───────────────────────────────────────────── */
+import type { WhiteboardNodeData } from '@/types/whiteboard';
 
 const nodeTypes: NodeTypes = {
   centerStatus: CenterStatusNode,
@@ -37,281 +25,131 @@ const nodeTypes: NodeTypes = {
   topics: TopicsNode,
 };
 
-/* ─────────────────────────────────────────────
-   Data shape from the API
-   ───────────────────────────────────────────── */
-
-interface EventData {
-  details: EventDetails;
-  name: string;
-  status: string;
-  attendeeCount: number;
-  date: string;
-}
-
-/* ─────────────────────────────────────────────
-   Layout constants
-   ───────────────────────────────────────────── */
-
-const CENTER = { x: 350, y: 300 };
-const OFFSET_X = 320;
-const OFFSET_Y = 240;
-
-/* ─────────────────────────────────────────────
-   Build nodes from event data
-   ───────────────────────────────────────────── */
-
-function buildNodes(data: EventData | null): Node[] {
-  if (!data) return [];
-
-  const { details, name, status } = data;
+/**
+ * Derive whiteboard nodes from chat messages.
+ * Each assistant message with tools/options becomes a card on the board.
+ */
+function deriveNodesFromMessages(messages: typeof useChatStore.prototype['messages']): Node[] {
   const nodes: Node[] = [];
+  let x = 50;
+  let y = 50;
+  const COL_WIDTH = 320;
+  const ROW_HEIGHT = 180;
+  const COLS = 3;
+  let idx = 0;
 
-  // Center
-  nodes.push({
-    id: 'center',
-    type: 'centerStatus',
-    position: CENTER,
-    data: {
-      name,
-      status,
-      date: details.confirmedDate || data.date || undefined,
-    },
-  });
+  for (const msg of messages) {
+    if (msg.role !== 'assistant' || !msg.metadata) continue;
 
-  // Top-left: Date & Time
-  nodes.push({
-    id: 'datetime',
-    type: 'dateTime',
-    position: { x: CENTER.x - OFFSET_X, y: CENTER.y - OFFSET_Y },
-    data: {
-      confirmedDate: details.confirmedDate,
-      confirmedTime: details.confirmedTime,
-    },
-  });
+    const meta = msg.metadata;
 
-  // Top-right: Venue
-  nodes.push({
-    id: 'venue',
-    type: 'venue',
-    position: { x: CENTER.x + OFFSET_X, y: CENTER.y - OFFSET_Y },
-    data: {
-      name: details.confirmedVenue?.name,
-      price: details.confirmedVenue?.price,
-      url: details.confirmedVenue?.url,
-      confirmed: !!details.confirmedVenue,
-    },
-  });
+    // Determine node type and data based on tools used
+    const toolsUsed = (meta.toolsUsed as string[]) || [];
+    let nodeType: string = 'task-card';
+    let statusColor: 'green' | 'yellow' | 'blue' | 'red' = 'green';
 
-  // Left: Contacts
-  nodes.push({
-    id: 'contacts',
-    type: 'contacts',
-    position: { x: CENTER.x - OFFSET_X - 20, y: CENTER.y + 10 },
-    data: {
-      contacts: (details.contacts || []).map((c) => ({
-        name: c.name,
-        phone: c.phone,
-        email: c.email,
-        status: 'pending' as const,
+    if (toolsUsed.includes('search_venues')) {
+      nodeType = 'venue-card';
+      statusColor = 'blue';
+    } else if (toolsUsed.includes('search_vendors') || toolsUsed.includes('search_catering') || toolsUsed.includes('web_search')) {
+      nodeType = 'vendor-card';
+      statusColor = 'blue';
+    } else if (toolsUsed.includes('send_whatsapp') || toolsUsed.includes('send_email')) {
+      nodeType = 'communication-log';
+      statusColor = 'green';
+    } else if (toolsUsed.includes('create_schedule')) {
+      nodeType = 'schedule-block';
+      statusColor = 'yellow';
+    } else if (toolsUsed.includes('get_budget_summary')) {
+      nodeType = 'analytics-widget';
+      statusColor = 'yellow';
+    }
+
+    // Only add nodes for messages that had tool activity
+    if (toolsUsed.length === 0 && !meta.options) continue;
+
+    const col = idx % COLS;
+    const row = Math.floor(idx / COLS);
+
+    const nodeData: WhiteboardNodeData = {
+      title: meta.agentName as string || 'Eventiq',
+      status: 'completed',
+      statusColor,
+      statusIcon: 'check',
+      summary: msg.content.slice(0, 120) + (msg.content.length > 120 ? '...' : ''),
+      details: {
+        toolsUsed,
+        creditsCost: meta.creditsCost,
+        optionsCount: (meta.options as any[])?.length || 0,
+      },
+      expandable: true,
+      discussionHistory: toolsUsed.map(tool => ({
+        timestamp: msg.timestamp,
+        agent: meta.agentName as string || 'Eventiq',
+        action: tool,
+        outcome: 'completed',
       })),
-      attendeeCount: data.attendeeCount,
-    },
-  });
+      lastUpdated: msg.timestamp,
+    };
 
-  // Right: Catering
-  nodes.push({
-    id: 'catering',
-    type: 'catering',
-    position: { x: CENTER.x + OFFSET_X + 20, y: CENTER.y + 10 },
-    data: {
-      name: details.confirmedCatering?.name,
-      price: details.confirmedCatering?.price,
-      confirmed: !!details.confirmedCatering,
-    },
-  });
+    // Add option links if available
+    if (meta.options && Array.isArray(meta.options)) {
+      nodeData.links = (meta.options as any[])
+        .filter((o: any) => o.url)
+        .slice(0, 3)
+        .map((o: any) => ({ label: o.name, url: o.url }));
+    }
 
-  // Bottom-left: Schedule
-  nodes.push({
-    id: 'schedule',
-    type: 'schedule',
-    position: { x: CENTER.x - OFFSET_X, y: CENTER.y + OFFSET_Y },
-    data: {
-      items: details.schedule || [],
-    },
-  });
+    nodes.push({
+      id: msg.id,
+      type: nodeType,
+      position: { x: 50 + col * COL_WIDTH, y: 50 + row * ROW_HEIGHT },
+      data: nodeData,
+    });
 
-  // Bottom-right: Topics
-  nodes.push({
-    id: 'topics',
-    type: 'topics',
-    position: { x: CENTER.x + OFFSET_X, y: CENTER.y + OFFSET_Y },
-    data: {
-      topics: details.topics || [],
-      confirmedTopics: [],
-    },
-  });
+    idx++;
+  }
+
+  // If no activity yet, show welcome card
+  if (nodes.length === 0) {
+    nodes.push({
+      id: 'welcome',
+      type: 'task-card',
+      position: { x: 200, y: 150 },
+      data: {
+        title: 'Event Whiteboard',
+        status: 'pending',
+        statusColor: 'blue',
+        statusIcon: 'info',
+        summary: 'Chat with Eventiq to plan your event. Actions and findings will appear here as cards.',
+        details: {},
+        expandable: false,
+        lastUpdated: new Date().toISOString(),
+      },
+    });
+  }
 
   return nodes;
 }
 
-/* ─────────────────────────────────────────────
-   Build edges with status-based styling
-   ───────────────────────────────────────────── */
-
-function buildEdges(data: EventData | null): Edge[] {
-  if (!data) return [];
-
-  const { details, status } = data;
-
-  const isEventConfirmed = status === 'confirmed' || status === 'completed';
-
-  function edgeStyle(confirmed: boolean) {
-    if (confirmed) {
-      return {
-        animated: false,
-        style: { stroke: '#22c55e', strokeWidth: 2 },
-      };
-    }
-    if (isEventConfirmed) {
-      return {
-        animated: false,
-        style: { stroke: '#22c55e', strokeWidth: 2 },
-      };
-    }
-    return {
+function deriveEdges(nodes: Node[]): Edge[] {
+  const edges: Edge[] = [];
+  for (let i = 1; i < nodes.length; i++) {
+    edges.push({
+      id: `edge-${nodes[i - 1].id}-${nodes[i].id}`,
+      source: nodes[i - 1].id,
+      target: nodes[i].id,
       animated: true,
-      style: { stroke: '#94a3b8', strokeWidth: 1.5, strokeDasharray: '5 5' },
-    };
+    });
   }
-
-  const dateConfirmed = !!details.confirmedDate;
-  const venueConfirmed = !!details.confirmedVenue;
-  const cateringConfirmed = !!details.confirmedCatering;
-  const scheduleReady = (details.schedule || []).length > 0;
-  const contactsActive =
-    (details.contacts || []).length > 0 || data.attendeeCount > 0;
-  const topicsReady = (details.topics || []).length > 0;
-
-  return [
-    {
-      id: 'e-datetime-center',
-      source: 'datetime',
-      target: 'center',
-      targetHandle: undefined,
-      ...edgeStyle(dateConfirmed),
-    },
-    {
-      id: 'e-venue-center',
-      source: 'venue',
-      target: 'center',
-      targetHandle: undefined,
-      ...edgeStyle(venueConfirmed),
-    },
-    {
-      id: 'e-contacts-center',
-      source: 'contacts',
-      target: 'center',
-      targetHandle: 'left',
-      ...edgeStyle(contactsActive),
-    },
-    {
-      id: 'e-catering-center',
-      source: 'catering',
-      target: 'center',
-      targetHandle: 'right',
-      ...edgeStyle(cateringConfirmed),
-    },
-    {
-      id: 'e-schedule-center',
-      source: 'schedule',
-      target: 'center',
-      targetHandle: 'bottom',
-      ...edgeStyle(scheduleReady),
-    },
-    {
-      id: 'e-topics-center',
-      source: 'topics',
-      target: 'center',
-      targetHandle: 'bottom',
-      ...edgeStyle(topicsReady),
-    },
-  ];
+  return edges;
 }
-
-/* ─────────────────────────────────────────────
-   Empty state component
-   ───────────────────────────────────────────── */
-
-function EmptyState() {
-  return (
-    <div className="flex-1 h-full flex items-center justify-center bg-muted/20">
-      <div className="text-center max-w-sm px-6">
-        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-          <svg
-            className="w-8 h-8 text-primary/60"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
-            />
-          </svg>
-        </div>
-        <h3 className="text-lg font-semibold text-foreground mb-1">
-          Event Whiteboard
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Select an event or start planning in the chat to see your event visualized here.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   Main WhiteboardView component
-   ───────────────────────────────────────────── */
 
 export function WhiteboardView() {
-  const activeEventId = useAppStore((s) => s.activeEventId);
-  const [eventData, setEventData] = useState<EventData | null>(null);
+  const messages = useChatStore((s) => s.messages);
 
-  useEffect(() => {
-    if (!activeEventId) {
-      setEventData(null);
-      return;
-    }
-
-    const fetchDetails = async () => {
-      try {
-        const res = await fetch(`/api/events/${activeEventId}/details`);
-        if (res.ok) {
-          const data = await res.json();
-          setEventData(data);
-        }
-      } catch (err) {
-        console.error('Failed to load event details:', err);
-      }
-    };
-
-    fetchDetails();
-
-    // Poll every 5 seconds to pick up changes
-    const interval = setInterval(fetchDetails, 5000);
-    return () => clearInterval(interval);
-  }, [activeEventId]);
-
-  const nodes = useMemo(() => buildNodes(eventData), [eventData]);
-  const edges = useMemo(() => buildEdges(eventData), [eventData]);
-
-  if (!activeEventId) {
-    return <EmptyState />;
-  }
+  const nodes = useMemo(() => deriveNodesFromMessages(messages), [messages]);
+  const edges = useMemo(() => deriveEdges(nodes), [nodes]);
 
   return (
     <div className="flex-1 h-full">
@@ -320,10 +158,9 @@ export function WhiteboardView() {
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
-        nodesDraggable={false}
+        nodesDraggable
         nodesConnectable={false}
-        elementsSelectable={false}
+        elementsSelectable
         panOnDrag
         zoomOnScroll
         minZoom={0.3}

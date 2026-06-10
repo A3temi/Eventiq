@@ -36,6 +36,7 @@ export function EventSidebar() {
   const { data: session } = useSession();
   const { events, activeEventId, setActiveEvent, eventsLoading, fetchEvents, deleteEvent, pinEvent } = useAppStore();
   const clearMessages = useChatStore((s) => s.clearMessages);
+  const loadConversation = useChatStore((s) => s.loadConversation);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -101,7 +102,7 @@ export function EventSidebar() {
               <button
                 onClick={() => {
                   setActiveEvent(event.id);
-                  clearMessages();
+                  loadConversation(event.id);
                 }}
                 className={cn(
                   'w-full text-left p-3 rounded-lg transition-colors',

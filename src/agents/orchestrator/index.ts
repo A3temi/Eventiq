@@ -19,10 +19,8 @@ interface OrchestrateResult {
 
 /**
  * Extract event name from the user's first message.
- * Uses the first meaningful phrase (up to 50 chars) as the event name.
  */
 function extractEventName(message: string): string {
-  // Remove common filler words at start
   const cleaned = message
     .replace(/^(i want to|i need to|help me|please|can you|i'd like to|let's|we need to)\s+/i, '')
     .replace(/^(plan|organize|create|set up|setup|arrange)\s+(a|an|the|my)?\s*/i, '')
@@ -30,7 +28,6 @@ function extractEventName(message: string): string {
 
   if (!cleaned) return 'New Event';
 
-  // Take first sentence or up to 50 chars
   const firstSentence = cleaned.split(/[.!?\n]/)[0].trim();
   if (firstSentence.length <= 50) return firstSentence;
   return firstSentence.slice(0, 47) + '...';
@@ -40,94 +37,99 @@ function extractEventName(message: string): string {
  * Parse tool results from agent response to extract structured option cards.
  */
 function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
-  const options: OptionCard[] = [];
+  // Only generate option cards when a search tool was actually used
+  const searchTools = toolsUsed.filter(t =>
+    ['search_venues', 'search_vendors', 'search_catering', 'web_search'].includes(t)
+  );
 
+  // No search tools = no options to show (schedules, emails, etc. are not "options")
+  if (searchTools.length === 0) return [];
+
+  const options: OptionCard[] = [];
   const lines = response.split('\n');
   let currentOption: Partial<OptionCard> | null = null;
 
+  // Determine type from the last search tool used
+  const lastSearchTool = searchTools[searchTools.length - 1];
+  let defaultType = 'option';
+  if (lastSearchTool === 'search_venues') defaultType = 'venue';
+  else if (lastSearchTool === 'search_vendors') defaultType = 'vendor';
+  else if (lastSearchTool === 'search_catering') defaultType = 'food';
+  else if (lastSearchTool === 'web_search') defaultType = 'result';
+
   for (const line of lines) {
-    // Match numbered items like "1. **Name** - description"
+    // SKIP lines that look like schedule/time slots (e.g. "3:00-3:10 | Welcome")
+    if (line.match(/^\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}/)) continue;
+    if (line.match(/\d{1,2}:\d{2}\s*\|/)) continue;
+
+    // SKIP lines that are just emoji headers or status lines
+    if (line.match(/^[📋🎯✅🚀⏰]/)) continue;
+
+    // Match numbered items: "1. **Name** - desc" or "1. Name — desc"
     const numberedMatch = line.match(/^\d+\.\s+\*?\*?(.+?)\*?\*?\s*[-–—:]\s*(.+)/);
     if (numberedMatch) {
+      const name = numberedMatch[1].replace(/\*+/g, '').trim();
+      // Skip if the "name" looks like a time slot or schedule item
+      if (name.match(/^\d{1,2}[:.]\d{2}/) || name.match(/^Session|^Break|^Lunch|^Welcome|^Wrap/i)) continue;
+
       if (currentOption?.name) {
         options.push(currentOption as OptionCard);
       }
       currentOption = {
-        name: numberedMatch[1].replace(/\*+/g, '').trim(),
+        name,
         description: numberedMatch[2].replace(/\*+/g, '').trim(),
-        type: toolsUsed.includes('search_vendors') ? 'vendor' : 'venue',
+        type: defaultType,
       };
       continue;
     }
 
-    if (!currentOption) continue;
+    // Match bold-only lines: "**Name** — description"
+    const boldMatch = line.match(/^\s*\*\*(.+?)\*\*\s*[-–—:]\s*(.+)/);
+    if (boldMatch) {
+      const name = boldMatch[1].trim();
+      if (name.match(/^\d{1,2}[:.]\d{2}/) || name.match(/^Session|^Break|^Lunch|^Welcome|^Wrap/i)) continue;
 
-    // Match URLs
-    const urlMatch = line.match(/(?:URL|url|Link|link|Source|source)\s*:?\s*(https?:\/\/[^\s)]+)/i);
-    if (urlMatch) {
-      currentOption.url = urlMatch[1];
-      // Generate image from domain
-      try {
-        const domain = new URL(urlMatch[1]).hostname;
-        currentOption.imageUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-      } catch {}
+      if (currentOption?.name) {
+        options.push(currentOption as OptionCard);
+      }
+      currentOption = {
+        name,
+        description: boldMatch[2].trim(),
+        type: defaultType,
+      };
       continue;
     }
 
-    // Match bare URLs (not already captured)
-    const bareUrl = line.match(/https?:\/\/[^\s)]+/);
-    if (bareUrl && !currentOption.url) {
-      currentOption.url = bareUrl[0];
-      try {
-        const domain = new URL(bareUrl[0]).hostname;
-        currentOption.imageUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-      } catch {}
-    }
+    if (currentOption) {
+      // Match URLs
+      const urlMatch = line.match(/(https?:\/\/[^\s)>"]+)/);
+      if (urlMatch && !currentOption.url) {
+        currentOption.url = urlMatch[1];
+      }
 
-    // Match price patterns
-    const priceMatch = line.match(/(?:Price|price|Cost|cost)\s*:?\s*(\$[\d,.]+(?:\s*(?:\/pax|per\s*pax|per\s*person|total))?|SGD\s*[\d,.]+)/i);
-    if (priceMatch) {
-      currentOption.price = priceMatch[1];
-      continue;
-    }
-    // Also catch inline price
-    const inlinePrice = line.match(/\$[\d,.]+(?:\s*(?:\/pax|per\s*pax|per\s*person))?/);
-    if (inlinePrice && !currentOption.price) {
-      currentOption.price = inlinePrice[0];
-    }
+      // Match price patterns
+      const priceMatch = line.match(/(?:Price|Cost|From|Budget)?:?\s*(?:SGD\s*)?\$?([\d,.]+(?:\/pax|\/person|\/head)?)/i);
+      if (priceMatch && !currentOption.price) {
+        currentOption.price = `$${priceMatch[1]}`;
+      }
 
-    // Match location patterns
-    const locationMatch = line.match(/(?:Location|Address|location|address)\s*:?\s*(.+)/i);
-    if (locationMatch) {
-      currentOption.location = locationMatch[1].replace(/[*_`]/g, '').trim();
-      continue;
-    }
-    // Singapore address patterns
-    const sgAddress = line.match(/((?:\d+\s+)?[\w\s]+(?:Road|Street|Avenue|Drive|Lane|Blvd)[^.,\n]*(?:Singapore)?)/i);
-    if (sgAddress && !currentOption.location) {
-      currentOption.location = sgAddress[1].trim();
-    }
-    // Known Singapore areas
-    const sgArea = line.match(/((?:Tanjong Pagar|Orchard|Marina Bay|Raffles|Clarke Quay|Sentosa|Jurong|Novena|Chinatown|Bugis)[^.,\n]*)/i);
-    if (sgArea && !currentOption.location) {
-      currentOption.location = sgArea[1].trim();
-    }
-
-    // Detect category
-    if (!currentOption.category) {
-      const lowerLine = line.toLowerCase();
-      if (lowerLine.includes('cater') || lowerLine.includes('food') || lowerLine.includes('buffet') || lowerLine.includes('menu')) {
-        currentOption.category = 'catering';
-      } else if (lowerLine.includes('venue') || lowerLine.includes('hall') || lowerLine.includes('room')) {
-        currentOption.category = 'venue';
-      } else if (lowerLine.includes('photo') || lowerLine.includes('video')) {
-        currentOption.category = 'photography';
+      // Match category
+      const catMatch = line.match(/Category:\s*(.+)/i);
+      if (catMatch) {
+        currentOption.category = catMatch[1].trim();
       }
     }
   }
 
   if (currentOption?.name) {
     options.push(currentOption as OptionCard);
+  }
+
+  // Cap descriptions
+  for (const opt of options) {
+    if (opt.description && opt.description.length > 200) {
+      opt.description = opt.description.slice(0, 197) + '...';
+    }
   }
 
   return options;
@@ -152,14 +154,30 @@ function buildThinkingSteps(toolsUsed: string[]): ThinkingStep[] {
         step.query = 'Vendor search';
         step.source = 'Exa Search';
         break;
+      case 'search_catering':
+        step.query = 'Catering search';
+        step.source = 'Exa Search';
+        break;
+      case 'web_search':
+        step.query = 'Web research';
+        step.source = 'Exa Search';
+        break;
       case 'send_whatsapp':
-        step.source = 'WhatsApp API';
+        step.source = 'WhatsApp (WAHA)';
         break;
       case 'send_email':
-        step.source = 'Email (SES)';
+        step.source = 'Email (SMTP)';
         break;
       case 'get_current_datetime':
-        step.source = 'System Clock';
+        step.source = 'System Clock (SGT)';
+        break;
+      case 'create_schedule':
+        step.query = 'Schedule generation';
+        step.source = 'Schedule Engine';
+        break;
+      case 'get_budget_summary':
+        step.query = 'Budget calculation';
+        step.source = 'Budget Engine';
         break;
       default:
         step.source = tool;
@@ -170,94 +188,14 @@ function buildThinkingSteps(toolsUsed: string[]): ThinkingStep[] {
 }
 
 /**
- * Persist confirmed event details to DynamoDB.
- * Proactively extracts structured data from the agent response text.
- * Doesn't just rely on save_event_details tool — parses response for confirmed choices.
+ * Main orchestrator — handles the full message flow:
+ * 1. Check credits
+ * 2. Load/create event
+ * 3. Load conversation history
+ * 4. Run LangGraph agent
+ * 5. Parse response into structured UI data
+ * 6. Save messages and deduct credits
  */
-async function persistEventDetails(eventId: string, response: string, toolsUsed: string[]): Promise<void> {
-  try {
-    const event = await getEvent(eventId);
-    if (!event) return;
-
-    const details: EventDetails = event.details || {};
-    let updated = false;
-
-    // Extract date from response
-    const dateMatch = response.match(/(?:confirmed|selected|chosen|set for|scheduled for|going with)[:\s]*(?:.*?)(\d{4}-\d{2}-\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}|(?:Saturday|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday)[,\s]+(?:June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?)/i);
-    if (dateMatch && !details.confirmedDate) {
-      details.confirmedDate = dateMatch[1];
-      updated = true;
-    }
-
-    // Also look for weekend dates the agent suggested
-    const weekendMatch = response.match(/(?:Saturday|Sunday)\s+(?:June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*,?\s*\d{4})?/i);
-    if (weekendMatch && !details.confirmedDate) {
-      details.confirmedDate = weekendMatch[0];
-      updated = true;
-    }
-
-    // Extract venue from response when user confirms
-    const venueConfirmMatch = response.match(/(?:venue|location|place)\s*(?:is|:)\s*\*?\*?([^*\n]+)/i);
-    if (venueConfirmMatch && !details.confirmedVenue) {
-      details.confirmedVenue = { name: venueConfirmMatch[1].trim() };
-      updated = true;
-    }
-
-    // Extract catering from confirmation
-    const cateringConfirmMatch = response.match(/(?:catering|food|menu)\s*(?:is|:)\s*\*?\*?([^*\n]+)/i);
-    if (cateringConfirmMatch && !details.confirmedCatering) {
-      details.confirmedCatering = { name: cateringConfirmMatch[1].trim() };
-      updated = true;
-    }
-
-    // If user selected an option (detected by "proceed with" or "go with" in context)
-    const selectionMatch = response.match(/(?:proceeding with|going with|confirmed|selecting)\s*[""]?([^"""\n]+)[""]?/i);
-    if (selectionMatch) {
-      const selection = selectionMatch[1].trim();
-      // Determine category based on context
-      if (toolsUsed.includes('search_vendors')) {
-        if (!details.confirmedCatering) {
-          details.confirmedCatering = { name: selection };
-          updated = true;
-        }
-      } else if (toolsUsed.includes('search_venues')) {
-        if (!details.confirmedVenue) {
-          details.confirmedVenue = { name: selection };
-          updated = true;
-        }
-      }
-    }
-
-    // Extract attendee count from response
-    const attendeeMatch = response.match(/(\d+)\s*(?:people|attendees|participants|pax|guests)/i);
-    if (attendeeMatch) {
-      const count = parseInt(attendeeMatch[1]);
-      if (count > 0 && count !== event.attendeeCount) {
-        await updateEvent(eventId, { attendeeCount: count });
-      }
-    }
-
-    // Extract topics
-    const topicSection = response.match(/(?:topics?|agenda)\s*(?:include|:)\s*([\s\S]*?)(?:\n\n|$)/i);
-    if (topicSection && !details.topics?.length) {
-      const topics = topicSection[1]
-        .split('\n')
-        .map(l => l.replace(/^[-*•\d.)\s]+/, '').replace(/\*+/g, '').trim())
-        .filter(t => t.length > 3 && t.length < 100);
-      if (topics.length > 0) {
-        details.topics = topics;
-        updated = true;
-      }
-    }
-
-    if (updated) {
-      await updateEvent(eventId, { details });
-    }
-  } catch (error) {
-    console.error('Failed to persist event details:', error);
-  }
-}
-
 export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateResult> {
   const { message, userId } = input;
   let { eventId } = input;
@@ -283,14 +221,14 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     eventId = event.id;
   }
 
-  // Load conversation history
+  // Load conversation history for context
   const recentMessages = await getRecentMessages(eventId!, 10);
   const history = recentMessages.map((m) => ({
     role: m.role,
     content: m.content,
   }));
 
-  // If this is the first real message and event is still "New Event", update name
+  // Update event name if it was created with default name
   if (event.name === 'New Event' && history.length === 0) {
     const newName = extractEventName(message);
     if (newName !== 'New Event') {
@@ -298,41 +236,21 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     }
   }
 
-  // Save user message
+  // Save user message to conversation
   await createMessage(eventId!, 'user', message);
 
-  // Check if user is confirming a choice from the previous options
-  const userConfirmMatch = message.match(/(?:go with|like to go with|select|choose|pick)\s*[""]?([^"""\n.]+)/i);
-  if (userConfirmMatch) {
-    const event2 = await getEvent(eventId!);
-    if (event2) {
-      const details: EventDetails = event2.details || {};
-      const selection = userConfirmMatch[1].trim().replace(/[()$]/g, '');
-      // Store as either venue or catering based on what's missing
-      if (!details.confirmedCatering && (selection.toLowerCase().includes('catering') || selection.toLowerCase().includes('buffet') || selection.toLowerCase().includes('food'))) {
-        details.confirmedCatering = { name: selection };
-        await updateEvent(eventId!, { details });
-      } else if (!details.confirmedVenue && (selection.toLowerCase().includes('venue') || selection.toLowerCase().includes('room') || selection.toLowerCase().includes('hall'))) {
-        details.confirmedVenue = { name: selection };
-        await updateEvent(eventId!, { details });
-      } else if (!details.confirmedCatering) {
-        // Default: assume it's the last thing agent offered options for
-        details.confirmedCatering = { name: selection };
-        await updateEvent(eventId!, { details });
-      }
-    }
-  }
-
-  // Deduct credits
-  await deductCredits(userId, 2, 'agent_call', eventId!);
+  // Deduct base credits for the request
+  const baseCost = 2;
+  await deductCredits(userId, baseCost, 'agent_call', eventId!);
 
   try {
     // Run the LangGraph multi-agent system
     const { response, toolsUsed } = await runAgentGraph(message, history);
 
-    // Deduct extra for tool usage
-    if (toolsUsed.length > 0) {
-      await deductCredits(userId, toolsUsed.length, 'tool_calls', eventId!);
+    // Deduct additional credits for tool usage
+    const toolCost = toolsUsed.length;
+    if (toolCost > 0) {
+      await deductCredits(userId, toolCost, 'tool_calls', eventId!);
     }
 
     // Persist event details if save_event_details was called
@@ -342,11 +260,13 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     // Parse structured data from response
     const options = parseOptions(response, toolsUsed);
     const thinking = buildThinkingSteps(toolsUsed);
+    const totalCost = baseCost + toolCost;
 
-    // Save response
+    // Save assistant response to conversation
     await createMessage(eventId!, 'assistant', response, {
       agentName: 'Eventiq',
-      creditsCost: 2 + toolsUsed.length,
+      creditsCost: totalCost,
+      toolsUsed,
     });
 
     return {
@@ -354,7 +274,7 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
       eventId: eventId || undefined,
       metadata: {
         agentName: 'Eventiq',
-        creditsCost: 2 + toolsUsed.length,
+        creditsCost: totalCost,
         toolsUsed,
         options: options.length > 0 ? options : undefined,
         thinking: thinking.length > 0 ? thinking : undefined,
@@ -364,8 +284,11 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     console.error('Agent graph error:', error);
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
 
+    // Save error to conversation for context
+    await createMessage(eventId!, 'system', `Error: ${errorMsg}`);
+
     return {
-      content: `I encountered an issue: ${errorMsg}. Please try rephrasing your request.`,
+      content: `I encountered an issue processing your request: ${errorMsg}. Please try rephrasing or try again.`,
       eventId: eventId || undefined,
       metadata: { agentName: 'Eventiq', error: errorMsg },
     };
