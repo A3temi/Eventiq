@@ -197,25 +197,76 @@ async function persistEventDetails(eventId: string, response: string, toolsUsed:
     const details: EventDetails = event.details || {};
     let updated = false;
 
-    const dateMatch = response.match(/(?:Saturday|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday)[,\s]+(?:June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?/i);
-    if (dateMatch && !details.confirmedDate) { details.confirmedDate = dateMatch[0]; updated = true; }
-
-    const venueMatch = response.match(/(?:venue|location|place)\s*(?:is|:)\s*\*?\*?([^*\n]+)/i);
-    if (venueMatch && !details.confirmedVenue) { details.confirmedVenue = { name: venueMatch[1].trim() }; updated = true; }
-
-    const cateringMatch = response.match(/(?:catering|food|menu)\s*(?:is|:)\s*\*?\*?([^*\n]+)/i);
-    if (cateringMatch && !details.confirmedCatering) { details.confirmedCatering = { name: cateringMatch[1].trim() }; updated = true; }
-
-    const attendeeMatch = response.match(/(\d+)\s*(?:people|attendees|participants|pax|guests)/i);
-    if (attendeeMatch) {
-      const count = parseInt(attendeeMatch[1]);
-      if (count > 0 && count !== event.attendeeCount) await updateEvent(eventId, { attendeeCount: count });
+    // Date patterns — match many formats
+    if (!details.confirmedDate) {
+      const datePatterns = [
+        /(?:September|October|November|December|January|February|March|April|May|June|July|August)\s+\d{1,2}(?:st|nd|rd|th)?\s*,?\s*\d{4}/i,
+        /(?:Saturday|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday)[,\s]+(?:September|October|November|December|January|February|March|April|May|June|July|August)\s+\d{1,2}/i,
+        /\d{4}-\d{2}-\d{2}/,
+        /\d{1,2}\/\d{1,2}\/\d{4}/,
+      ];
+      for (const pattern of datePatterns) {
+        const match = response.match(pattern);
+        if (match) { details.confirmedDate = match[0]; updated = true; break; }
+      }
     }
 
-    const topicSection = response.match(/(?:topics?|agenda)\s*(?:include|:)\s*([\s\S]*?)(?:\n\n|$)/i);
-    if (topicSection && !details.topics?.length) {
-      const topics = topicSection[1].split('\n').map(l => l.replace(/^[-*•\d.)\s]+/, '').replace(/\*+/g, '').trim()).filter(t => t.length > 3 && t.length < 100);
-      if (topics.length > 0) { details.topics = topics; updated = true; }
+    // Venue — broader matching
+    if (!details.confirmedVenue) {
+      const venuePatterns = [
+        /(?:venue|location|place)\s*(?:is|:|confirmed|selected|booked)\s*\*?\*?([^*\n.]+)/i,
+        /(?:Marina Bay|Raffles|Sentosa|Gardens by the Bay|One Raffles|Singapore Flyer)[^.\n]*/i,
+      ];
+      for (const pattern of venuePatterns) {
+        const match = response.match(pattern);
+        if (match) { details.confirmedVenue = { name: (match[1] || match[0]).trim().slice(0, 80) }; updated = true; break; }
+      }
+    }
+
+    // Catering
+    if (!details.confirmedCatering) {
+      const match = response.match(/(?:catering|caterer|food|dinner)\s*(?:is|:|confirmed|by|from)\s*\*?\*?([^*\n.]+)/i);
+      if (match) { details.confirmedCatering = { name: match[1].trim().slice(0, 80) }; updated = true; }
+    }
+
+    // Attendee count
+    const attendeeMatch = response.match(/(\d+)\s*(?:people|attendees|participants|pax|guests|invitees)/i);
+    if (attendeeMatch) {
+      const count = parseInt(attendeeMatch[1]);
+      if (count > 0 && count !== event.attendeeCount) {
+        await updateEvent(eventId, { attendeeCount: count });
+      }
+    }
+
+    // Budget
+    if (!details.budget) {
+      const budgetMatch = response.match(/(?:budget|total)\s*(?:is|:|\s)?\s*(?:SGD|S\$|\$)\s*([\d,]+)/i);
+      if (budgetMatch) {
+        const total = parseInt(budgetMatch[1].replace(/,/g, ''));
+        if (total > 0) { details.budget = { total, committed: 0, items: [] }; updated = true; }
+      }
+    }
+
+    // Schedule items — parse time ranges like "7:00-8:00 PM: Welcome drinks"
+    if (!details.schedule || details.schedule.length === 0) {
+      const scheduleLines = response.match(/\d{1,2}[:.]\d{2}\s*(?:[-–]\s*\d{1,2}[:.]\d{2})?\s*(?:AM|PM|am|pm)?\s*[:–-]\s*[^\n]+/g);
+      if (scheduleLines && scheduleLines.length >= 2) {
+        details.schedule = scheduleLines.map(line => {
+          const parts = line.match(/^([\d:.]+\s*(?:[-–]\s*[\d:.]+)?\s*(?:AM|PM|am|pm)?)\s*[:–-]\s*(.+)/);
+          if (parts) return { time: parts[1].trim(), title: parts[2].trim(), status: 'pending' as const };
+          return { time: '', title: line.trim(), status: 'pending' as const };
+        }).filter(s => s.time && s.title);
+        if (details.schedule.length > 0) updated = true;
+      }
+    }
+
+    // Topics — match bulleted/numbered items near "topics" or "agenda" keywords
+    if (!details.topics?.length) {
+      const topicSection = response.match(/(?:topics?|agenda|programme|program)\s*(?:include|:|\n)\s*([\s\S]*?)(?:\n\n|$)/i);
+      if (topicSection) {
+        const topics = topicSection[1].split('\n').map(l => l.replace(/^[-*•\d.)\s]+/, '').replace(/\*+/g, '').trim()).filter(t => t.length > 3 && t.length < 100);
+        if (topics.length > 0) { details.topics = topics; updated = true; }
+      }
     }
 
     if (updated) await updateEvent(eventId, { details });
