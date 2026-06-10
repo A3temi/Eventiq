@@ -4,9 +4,8 @@ import { ChatBedrockConverse } from '@langchain/aws';
  * LLM Factory — creates the right model client based on env config.
  *
  * When USE_VERCEL_AI_GATEWAY=true:
- *   Uses Vercel AI Gateway via OpenAI-compatible API
+ *   Uses Vercel AI Gateway via @langchain/openai with custom baseURL + auth header
  *   Base URL: https://ai-gateway.vercel.sh/v1
- *   Model names: anthropic/claude-sonnet-4, anthropic/claude-haiku-4.5
  *
  * When USE_VERCEL_AI_GATEWAY=false (default):
  *   Uses AWS Bedrock directly
@@ -17,17 +16,28 @@ function useGateway(): boolean {
   return val === 'true' || val === '1';
 }
 
+function getGatewayKey(): string {
+  return process.env.AI_GATEWAY_API_KEY
+    || process.env.VERCEL_AI_GATEWAY_API_KEY
+    || process.env.VERCEL_OIDC_TOKEN
+    || '';
+}
+
 /**
  * Create the primary/orchestrator model (Claude Sonnet).
  */
 export function createPrimaryLLM(): any {
   if (useGateway()) {
     const { ChatOpenAI } = require('@langchain/openai');
+    const key = getGatewayKey();
     return new ChatOpenAI({
       modelName: process.env.AI_PRIMARY_MODEL || 'anthropic/claude-sonnet-4',
-      openAIApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
+      openAIApiKey: key,
       configuration: {
         baseURL: 'https://ai-gateway.vercel.sh/v1',
+        defaultHeaders: {
+          'Authorization': `Bearer ${key}`,
+        },
       },
       temperature: 0.3,
       maxTokens: 4096,
@@ -52,11 +62,15 @@ export function createPrimaryLLM(): any {
 export function createFastLLM(): any {
   if (useGateway()) {
     const { ChatOpenAI } = require('@langchain/openai');
+    const key = getGatewayKey();
     return new ChatOpenAI({
       modelName: process.env.AI_FAST_MODEL || 'anthropic/claude-haiku-4.5',
-      openAIApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
+      openAIApiKey: key,
       configuration: {
         baseURL: 'https://ai-gateway.vercel.sh/v1',
+        defaultHeaders: {
+          'Authorization': `Bearer ${key}`,
+        },
       },
       temperature: 0.2,
       maxTokens: 2048,
