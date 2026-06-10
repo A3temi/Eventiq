@@ -17,10 +17,11 @@ import type { OptionCard } from '@/types/chat';
 
 export function ChatPanel() {
   const [input, setInput] = useState('');
-  const [credits, setCredits] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { data: session, status } = useSession();
-  const { messages, isLoading, pendingApprovals } = useChatStore();
+  const { messages, isLoading } = useChatStore();
   const activeEventId = useAppStore((s) => s.activeEventId);
   const fetchEvents = useAppStore((s) => s.fetchEvents);
 
@@ -41,15 +42,6 @@ export function ChatPanel() {
         .catch(() => {});
     }
   }, [activeEventId, session]);
-
-  useEffect(() => {
-    if (session?.user?.email) {
-      fetch('/api/credits')
-        .then((r) => r.json())
-        .then((d) => setCredits(d.balance))
-        .catch(() => {});
-    }
-  }, [session]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,7 +83,6 @@ export function ChatPanel() {
       // Update active event if one was created
       if (data.eventId && !activeEventId) {
         useAppStore.getState().setActiveEvent(data.eventId);
-        // Refresh events list
         fetchEvents();
       }
 
@@ -102,13 +93,7 @@ export function ChatPanel() {
         timestamp: new Date().toISOString(),
         metadata: data.metadata,
       });
-
-      // Refresh credits after operation
-      fetch('/api/credits')
-        .then((r) => r.json())
-        .then((d) => setCredits(d.balance))
-        .catch(() => {});
-    } catch (error) {
+    } catch {
       useChatStore.getState().addMessage({
         id: crypto.randomUUID(),
         role: 'system',
@@ -121,22 +106,94 @@ export function ChatPanel() {
   };
 
   const handleOptionSelect = (option: OptionCard) => {
-    const confirmMessage = `I'd like to go with "${option.name}"${option.price ? ` (${option.price})` : ''}. Please proceed with this choice.`;
+    const confirmMessage = `I'd like to go with "${option.name}"${option.price ? ` (${option.price})` : ''}. Please confirm this choice.`;
     setInput(confirmMessage);
-    // Auto-submit
-    const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-    setTimeout(() => {
-      setInput(confirmMessage);
-      handleSubmit(fakeEvent);
-    }, 100);
+    // Don't auto-submit - let user press enter or modify
   };
 
   const handleShuffle = () => {
     setInput('Can you search for more options? I want to see different alternatives.');
   };
 
-  const handleEditMessage = (content: string) => {
-    setInput(content);
+  const handleStartEdit = (messageId: string, content: string) => {
+    setEditingId(messageId);
+    setEditText(content);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const handleEditSubmit = async (messageId: string) => {
+    if (!editText.trim() || isLoading) return;
+
+    // Find the index of the edited message
+    const msgIndex = messages.findIndex((m) => m.id === messageId);
+    if (msgIndex === -1) return;
+
+    // Remove all messages after the edited one
+    const trimmedMessages = messages.slice(0, msgIndex);
+    useChatStore.getState().setMessages(trimmedMessages);
+
+    // Clear editing state
+    setEditingId(null);
+
+    // Submit the edited message as a new message
+    setInput(editText.trim());
+    setEditText('');
+
+    // Trigger submit with the edited text
+    const userMessage = {
+      id: crypto.randomUUID(),
+      role: 'user' as const,
+      content: editText.trim(),
+      timestamp: new Date().toISOString(),
+    };
+
+    useChatStore.getState().addMessage(userMessage);
+    useChatStore.getState().setLoading(true);
+    setInput('');
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage.content,
+          eventId: activeEventId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.status === 401) {
+        signIn('google');
+        return;
+      }
+
+      if (data.eventId && !activeEventId) {
+        useAppStore.getState().setActiveEvent(data.eventId);
+        fetchEvents();
+      }
+
+      useChatStore.getState().addMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: data.content || data.error || 'No response',
+        timestamp: new Date().toISOString(),
+        metadata: data.metadata,
+      });
+    } catch {
+      useChatStore.getState().addMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: 'Failed to process your message. Please try again.',
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      useChatStore.getState().setLoading(false);
+    }
   };
 
   const handleRetry = (messageIndex: number) => {
@@ -145,11 +202,6 @@ export function ChatPanel() {
     const lastUserMessage = [...precedingMessages].reverse().find((m) => m.role === 'user');
     if (lastUserMessage) {
       setInput(lastUserMessage.content);
-      // Auto-submit retry
-      setTimeout(() => {
-        const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-        handleSubmit(fakeEvent);
-      }, 100);
     }
   };
 
@@ -174,11 +226,6 @@ export function ChatPanel() {
               >
                 Sign in with Google to get started
               </button>
-            )}
-            {session && (
-              <div className="mt-4 text-xs text-muted-foreground">
-                ✨ {credits ?? '...'} credits available
-              </div>
             )}
           </div>
         ) : (
@@ -212,7 +259,35 @@ export function ChatPanel() {
                     )}
                   </div>
                 )}
-                <MarkdownMessage content={msg.content} isUser={msg.role === 'user'} />
+
+                {/* Inline edit or normal message display */}
+                {editingId === msg.id ? (
+                  <div className="flex flex-col gap-2">
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border bg-background text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      rows={3}
+                      autoFocus
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={handleCancelEdit}
+                        className="px-3 py-1 text-xs rounded border hover:bg-accent text-foreground"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleEditSubmit(msg.id)}
+                        className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <MarkdownMessage content={msg.content} isUser={msg.role === 'user'} />
+                )}
 
                 {/* Thinking trace */}
                 {msg.metadata?.thinking && msg.metadata.thinking.length > 0 && (
@@ -237,12 +312,12 @@ export function ChatPanel() {
                 )}
 
                 {/* Message actions */}
-                {msg.role !== 'system' && (
+                {msg.role !== 'system' && editingId !== msg.id && (
                   <MessageActions
                     role={msg.role}
                     content={msg.content}
                     messageId={msg.id}
-                    onEdit={msg.role === 'user' ? handleEditMessage : undefined}
+                    onEdit={msg.role === 'user' ? (content) => handleStartEdit(msg.id, content) : undefined}
                     onRetry={msg.role === 'assistant' ? () => handleRetry(msgIndex) : undefined}
                   />
                 )}
@@ -295,11 +370,6 @@ export function ChatPanel() {
             {!session ? <Lock className="w-4 h-4" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
-        {session && credits !== null && (
-          <div className="text-center text-xs text-muted-foreground mt-2">
-            ✨ {credits} credits remaining
-          </div>
-        )}
       </form>
     </div>
   );

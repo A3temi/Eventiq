@@ -8,7 +8,7 @@ interface MessageActionsProps {
   role: 'user' | 'assistant' | 'system';
   content: string;
   messageId: string;
-  onEdit?: (newContent: string) => void;
+  onEdit?: (content: string) => void;
   onRetry?: () => void;
 }
 
