@@ -152,63 +152,88 @@ function buildThinkingSteps(toolsUsed: string[]): ThinkingStep[] {
 
 /**
  * Persist confirmed event details to DynamoDB.
- * Parses the response for saved field/value from save_event_details tool calls.
+ * Proactively extracts structured data from the agent response text.
+ * Doesn't just rely on save_event_details tool — parses response for confirmed choices.
  */
-async function persistEventDetails(eventId: string, response: string): Promise<void> {
+async function persistEventDetails(eventId: string, response: string, toolsUsed: string[]): Promise<void> {
   try {
     const event = await getEvent(eventId);
     if (!event) return;
 
     const details: EventDetails = event.details || {};
+    let updated = false;
 
-    // Look for save_event_details results in the response context
-    // The tool returns JSON like {"saved":true,"field":"confirmedVenue","value":"..."}
-    const savedPattern = /\{"saved"\s*:\s*true\s*,\s*"field"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*"([^"]*(?:\\.[^"]*)*)"\s*\}/g;
-    let match: RegExpExecArray | null;
+    // Extract date from response
+    const dateMatch = response.match(/(?:confirmed|selected|chosen|set for|scheduled for|going with)[:\s]*(?:.*?)(\d{4}-\d{2}-\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}|(?:Saturday|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday)[,\s]+(?:June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?)/i);
+    if (dateMatch && !details.confirmedDate) {
+      details.confirmedDate = dateMatch[1];
+      updated = true;
+    }
 
-    while ((match = savedPattern.exec(response)) !== null) {
-      const field = match[1];
-      const rawValue = match[2].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    // Also look for weekend dates the agent suggested
+    const weekendMatch = response.match(/(?:Saturday|Sunday)\s+(?:June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*,?\s*\d{4})?/i);
+    if (weekendMatch && !details.confirmedDate) {
+      details.confirmedDate = weekendMatch[0];
+      updated = true;
+    }
 
-      try {
-        const parsed = JSON.parse(rawValue);
-        switch (field) {
-          case 'confirmedDate':
-            details.confirmedDate = typeof parsed === 'string' ? parsed : String(parsed);
-            break;
-          case 'confirmedTime':
-            details.confirmedTime = typeof parsed === 'string' ? parsed : String(parsed);
-            break;
-          case 'confirmedVenue':
-            details.confirmedVenue = parsed;
-            break;
-          case 'confirmedCatering':
-            details.confirmedCatering = parsed;
-            break;
-          case 'schedule':
-            details.schedule = Array.isArray(parsed) ? parsed : [...(details.schedule || []), parsed];
-            break;
-          case 'contacts':
-            details.contacts = Array.isArray(parsed) ? parsed : [...(details.contacts || []), parsed];
-            break;
-          case 'topics':
-            details.topics = Array.isArray(parsed) ? parsed : [...(details.topics || []), parsed];
-            break;
+    // Extract venue from response when user confirms
+    const venueConfirmMatch = response.match(/(?:venue|location|place)\s*(?:is|:)\s*\*?\*?([^*\n]+)/i);
+    if (venueConfirmMatch && !details.confirmedVenue) {
+      details.confirmedVenue = { name: venueConfirmMatch[1].trim() };
+      updated = true;
+    }
+
+    // Extract catering from confirmation
+    const cateringConfirmMatch = response.match(/(?:catering|food|menu)\s*(?:is|:)\s*\*?\*?([^*\n]+)/i);
+    if (cateringConfirmMatch && !details.confirmedCatering) {
+      details.confirmedCatering = { name: cateringConfirmMatch[1].trim() };
+      updated = true;
+    }
+
+    // If user selected an option (detected by "proceed with" or "go with" in context)
+    const selectionMatch = response.match(/(?:proceeding with|going with|confirmed|selecting)\s*[""]?([^"""\n]+)[""]?/i);
+    if (selectionMatch) {
+      const selection = selectionMatch[1].trim();
+      // Determine category based on context
+      if (toolsUsed.includes('search_vendors')) {
+        if (!details.confirmedCatering) {
+          details.confirmedCatering = { name: selection };
+          updated = true;
         }
-      } catch {
-        // Value is a plain string
-        switch (field) {
-          case 'confirmedDate':
-            details.confirmedDate = rawValue;
-            break;
-          case 'confirmedTime':
-            details.confirmedTime = rawValue;
-            break;
+      } else if (toolsUsed.includes('search_venues')) {
+        if (!details.confirmedVenue) {
+          details.confirmedVenue = { name: selection };
+          updated = true;
         }
       }
     }
 
-    await updateEvent(eventId, { details });
+    // Extract attendee count from response
+    const attendeeMatch = response.match(/(\d+)\s*(?:people|attendees|participants|pax|guests)/i);
+    if (attendeeMatch) {
+      const count = parseInt(attendeeMatch[1]);
+      if (count > 0 && count !== event.attendeeCount) {
+        await updateEvent(eventId, { attendeeCount: count });
+      }
+    }
+
+    // Extract topics
+    const topicSection = response.match(/(?:topics?|agenda)\s*(?:include|:)\s*([\s\S]*?)(?:\n\n|$)/i);
+    if (topicSection && !details.topics?.length) {
+      const topics = topicSection[1]
+        .split('\n')
+        .map(l => l.replace(/^[-*•\d.)\s]+/, '').replace(/\*+/g, '').trim())
+        .filter(t => t.length > 3 && t.length < 100);
+      if (topics.length > 0) {
+        details.topics = topics;
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      await updateEvent(eventId, { details });
+    }
   } catch (error) {
     console.error('Failed to persist event details:', error);
   }
@@ -257,6 +282,28 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
   // Save user message
   await createMessage(eventId!, 'user', message);
 
+  // Check if user is confirming a choice from the previous options
+  const userConfirmMatch = message.match(/(?:go with|like to go with|select|choose|pick)\s*[""]?([^"""\n.]+)/i);
+  if (userConfirmMatch) {
+    const event2 = await getEvent(eventId!);
+    if (event2) {
+      const details: EventDetails = event2.details || {};
+      const selection = userConfirmMatch[1].trim().replace(/[()$]/g, '');
+      // Store as either venue or catering based on what's missing
+      if (!details.confirmedCatering && (selection.toLowerCase().includes('catering') || selection.toLowerCase().includes('buffet') || selection.toLowerCase().includes('food'))) {
+        details.confirmedCatering = { name: selection };
+        await updateEvent(eventId!, { details });
+      } else if (!details.confirmedVenue && (selection.toLowerCase().includes('venue') || selection.toLowerCase().includes('room') || selection.toLowerCase().includes('hall'))) {
+        details.confirmedVenue = { name: selection };
+        await updateEvent(eventId!, { details });
+      } else if (!details.confirmedCatering) {
+        // Default: assume it's the last thing agent offered options for
+        details.confirmedCatering = { name: selection };
+        await updateEvent(eventId!, { details });
+      }
+    }
+  }
+
   // Deduct credits
   await deductCredits(userId, 2, 'agent_call', eventId!);
 
@@ -270,9 +317,8 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     }
 
     // Persist event details if save_event_details was called
-    if (toolsUsed.includes('save_event_details')) {
-      await persistEventDetails(eventId!, response);
-    }
+    // Actually, ALWAYS try to extract and persist details from the response
+    await persistEventDetails(eventId!, response, toolsUsed);
 
     // Parse structured data from response
     const options = parseOptions(response, toolsUsed);

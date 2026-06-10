@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -10,20 +10,36 @@ import ReactFlow, {
   type Edge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { WhiteboardNodeCard } from './WhiteboardNodeCard';
+import {
+  CenterStatusNode,
+  DateTimeNode,
+  VenueNode,
+  CateringNode,
+  ScheduleNode,
+  ContactsNode,
+  TopicsNode,
+} from './nodes';
 import { useAppStore } from '@/stores/app-store';
 import type { EventDetails } from '@/types/event';
 
+/* ─────────────────────────────────────────────
+   Node types must be defined outside the component
+   to avoid re-registration on every render.
+   ───────────────────────────────────────────── */
+
 const nodeTypes: NodeTypes = {
-  'schedule-block': WhiteboardNodeCard,
-  'vendor-card': WhiteboardNodeCard,
-  'venue-card': WhiteboardNodeCard,
-  'payment-status': WhiteboardNodeCard,
-  'attendee-stats': WhiteboardNodeCard,
-  'task-card': WhiteboardNodeCard,
-  'communication-log': WhiteboardNodeCard,
-  'analytics-widget': WhiteboardNodeCard,
+  centerStatus: CenterStatusNode,
+  dateTime: DateTimeNode,
+  venue: VenueNode,
+  catering: CateringNode,
+  schedule: ScheduleNode,
+  contacts: ContactsNode,
+  topics: TopicsNode,
 };
+
+/* ─────────────────────────────────────────────
+   Data shape from the API
+   ───────────────────────────────────────────── */
 
 interface EventData {
   details: EventDetails;
@@ -33,178 +49,233 @@ interface EventData {
   date: string;
 }
 
-function buildNodes(data: EventData | null): Node[] {
-  if (!data) {
-    return [
-      {
-        id: 'welcome',
-        type: 'task-card',
-        position: { x: 300, y: 250 },
-        data: {
-          title: 'Event Overview',
-          status: 'pending',
-          statusColor: 'blue',
-          statusIcon: 'info',
-          summary: 'Start planning your event in the chat to see it visualized here.',
-          details: {},
-          expandable: false,
-          lastUpdated: new Date().toISOString(),
-        },
-      },
-    ];
-  }
+/* ─────────────────────────────────────────────
+   Layout constants
+   ───────────────────────────────────────────── */
 
-  const { details, name, status, attendeeCount } = data;
+const CENTER = { x: 350, y: 300 };
+const OFFSET_X = 320;
+const OFFSET_Y = 240;
+
+/* ─────────────────────────────────────────────
+   Build nodes from event data
+   ───────────────────────────────────────────── */
+
+function buildNodes(data: EventData | null): Node[] {
+  if (!data) return [];
+
+  const { details, name, status } = data;
   const nodes: Node[] = [];
 
-  // Center status node
+  // Center
   nodes.push({
-    id: 'status',
-    type: 'task-card',
-    position: { x: 300, y: 250 },
+    id: 'center',
+    type: 'centerStatus',
+    position: CENTER,
     data: {
-      title: `📋 ${name}`,
-      status: status === 'confirmed' ? 'completed' : 'in-progress',
-      statusColor: status === 'confirmed' ? 'green' : 'blue',
-      statusIcon: 'info',
-      summary: `Status: ${status}`,
-      details: {},
-      expandable: false,
-      lastUpdated: new Date().toISOString(),
+      name,
+      status,
+      date: details.confirmedDate || data.date || undefined,
     },
   });
 
-  // Date node (top-left)
+  // Top-left: Date & Time
   nodes.push({
-    id: 'date',
-    type: 'task-card',
-    position: { x: 50, y: 50 },
+    id: 'datetime',
+    type: 'dateTime',
+    position: { x: CENTER.x - OFFSET_X, y: CENTER.y - OFFSET_Y },
     data: {
-      title: '📅 Date & Time',
-      status: details.confirmedDate ? 'completed' : 'pending',
-      statusColor: details.confirmedDate ? 'green' : 'yellow',
-      statusIcon: details.confirmedDate ? 'check' : 'clock',
-      summary: details.confirmedDate
-        ? `${details.confirmedDate}${details.confirmedTime ? ' at ' + details.confirmedTime : ''}`
-        : 'Not yet decided',
-      details: {},
-      expandable: false,
-      lastUpdated: new Date().toISOString(),
+      confirmedDate: details.confirmedDate,
+      confirmedTime: details.confirmedTime,
     },
   });
 
-  // Venue node (top-right)
+  // Top-right: Venue
   nodes.push({
     id: 'venue',
-    type: 'venue-card',
-    position: { x: 550, y: 50 },
+    type: 'venue',
+    position: { x: CENTER.x + OFFSET_X, y: CENTER.y - OFFSET_Y },
     data: {
-      title: '📍 Venue',
-      status: details.confirmedVenue ? 'completed' : 'pending',
-      statusColor: details.confirmedVenue ? 'green' : 'yellow',
-      statusIcon: details.confirmedVenue ? 'check' : 'clock',
-      summary: details.confirmedVenue
-        ? `${details.confirmedVenue.name}${details.confirmedVenue.price ? ' • ' + details.confirmedVenue.price : ''}`
-        : 'Not yet decided',
-      details: {},
-      links: details.confirmedVenue?.url
-        ? [{ label: 'Visit site', url: details.confirmedVenue.url }]
-        : undefined,
-      expandable: false,
-      lastUpdated: new Date().toISOString(),
+      name: details.confirmedVenue?.name,
+      price: details.confirmedVenue?.price,
+      url: details.confirmedVenue?.url,
+      confirmed: !!details.confirmedVenue,
     },
   });
 
-  // Catering node (bottom-left)
+  // Left: Contacts
+  nodes.push({
+    id: 'contacts',
+    type: 'contacts',
+    position: { x: CENTER.x - OFFSET_X - 20, y: CENTER.y + 10 },
+    data: {
+      contacts: (details.contacts || []).map((c) => ({
+        name: c.name,
+        phone: c.phone,
+        email: c.email,
+        status: 'pending' as const,
+      })),
+      attendeeCount: data.attendeeCount,
+    },
+  });
+
+  // Right: Catering
   nodes.push({
     id: 'catering',
-    type: 'vendor-card',
-    position: { x: 50, y: 450 },
+    type: 'catering',
+    position: { x: CENTER.x + OFFSET_X + 20, y: CENTER.y + 10 },
     data: {
-      title: '🍽️ Catering',
-      status: details.confirmedCatering ? 'completed' : 'pending',
-      statusColor: details.confirmedCatering ? 'green' : 'yellow',
-      statusIcon: details.confirmedCatering ? 'check' : 'clock',
-      summary: details.confirmedCatering
-        ? `${details.confirmedCatering.name}${details.confirmedCatering.price ? ' • ' + details.confirmedCatering.price : ''}`
-        : 'Not yet decided',
-      details: {},
-      links: details.confirmedCatering?.url
-        ? [{ label: 'Visit site', url: details.confirmedCatering.url }]
-        : undefined,
-      expandable: false,
-      lastUpdated: new Date().toISOString(),
+      name: details.confirmedCatering?.name,
+      price: details.confirmedCatering?.price,
+      confirmed: !!details.confirmedCatering,
     },
   });
 
-  // Schedule node (bottom-right)
-  const scheduleItems = details.schedule || [];
+  // Bottom-left: Schedule
   nodes.push({
     id: 'schedule',
-    type: 'schedule-block',
-    position: { x: 550, y: 450 },
+    type: 'schedule',
+    position: { x: CENTER.x - OFFSET_X, y: CENTER.y + OFFSET_Y },
     data: {
-      title: '🕐 Schedule',
-      status: scheduleItems.length > 0 ? 'completed' : 'pending',
-      statusColor: scheduleItems.length > 0 ? 'green' : 'yellow',
-      statusIcon: scheduleItems.length > 0 ? 'check' : 'clock',
-      summary: scheduleItems.length > 0
-        ? scheduleItems.map((s) => `${s.time} - ${s.title}`).join(', ')
-        : 'No agenda items yet',
-      details: {},
-      expandable: scheduleItems.length > 0,
-      discussionHistory: scheduleItems.map((s) => ({
-        timestamp: new Date().toISOString(),
-        agent: s.time,
-        action: s.title,
-        outcome: s.speaker || '',
-      })),
-      lastUpdated: new Date().toISOString(),
+      items: details.schedule || [],
     },
   });
 
-  // Attendees node (middle-left)
-  const contacts = details.contacts || [];
+  // Bottom-right: Topics
   nodes.push({
-    id: 'attendees',
-    type: 'attendee-stats',
-    position: { x: 50, y: 250 },
+    id: 'topics',
+    type: 'topics',
+    position: { x: CENTER.x + OFFSET_X, y: CENTER.y + OFFSET_Y },
     data: {
-      title: '👥 Attendees',
-      status: attendeeCount > 0 || contacts.length > 0 ? 'in-progress' : 'pending',
-      statusColor: attendeeCount > 0 || contacts.length > 0 ? 'blue' : 'yellow',
-      statusIcon: 'info',
-      summary: attendeeCount > 0
-        ? `${attendeeCount} people${contacts.length > 0 ? ` • ${contacts.length} contacts` : ''}`
-        : contacts.length > 0
-          ? `${contacts.length} contacts`
-          : 'Not yet decided',
-      details: {},
-      expandable: contacts.length > 0,
-      discussionHistory: contacts.map((c) => ({
-        timestamp: new Date().toISOString(),
-        agent: c.name || 'Contact',
-        action: c.phone || c.email || '',
-        outcome: '',
-      })),
-      lastUpdated: new Date().toISOString(),
+      topics: details.topics || [],
+      confirmedTopics: [],
     },
   });
 
   return nodes;
 }
 
+/* ─────────────────────────────────────────────
+   Build edges with status-based styling
+   ───────────────────────────────────────────── */
+
 function buildEdges(data: EventData | null): Edge[] {
   if (!data) return [];
 
+  const { details, status } = data;
+
+  const isEventConfirmed = status === 'confirmed' || status === 'completed';
+
+  function edgeStyle(confirmed: boolean) {
+    if (confirmed) {
+      return {
+        animated: false,
+        style: { stroke: '#22c55e', strokeWidth: 2 },
+      };
+    }
+    if (isEventConfirmed) {
+      return {
+        animated: false,
+        style: { stroke: '#22c55e', strokeWidth: 2 },
+      };
+    }
+    return {
+      animated: true,
+      style: { stroke: '#94a3b8', strokeWidth: 1.5, strokeDasharray: '5 5' },
+    };
+  }
+
+  const dateConfirmed = !!details.confirmedDate;
+  const venueConfirmed = !!details.confirmedVenue;
+  const cateringConfirmed = !!details.confirmedCatering;
+  const scheduleReady = (details.schedule || []).length > 0;
+  const contactsActive =
+    (details.contacts || []).length > 0 || data.attendeeCount > 0;
+  const topicsReady = (details.topics || []).length > 0;
+
   return [
-    { id: 'e-date-status', source: 'date', target: 'status', animated: true },
-    { id: 'e-venue-status', source: 'venue', target: 'status', animated: true },
-    { id: 'e-catering-status', source: 'catering', target: 'status' },
-    { id: 'e-schedule-status', source: 'schedule', target: 'status' },
-    { id: 'e-attendees-status', source: 'attendees', target: 'status' },
+    {
+      id: 'e-datetime-center',
+      source: 'datetime',
+      target: 'center',
+      targetHandle: undefined,
+      ...edgeStyle(dateConfirmed),
+    },
+    {
+      id: 'e-venue-center',
+      source: 'venue',
+      target: 'center',
+      targetHandle: undefined,
+      ...edgeStyle(venueConfirmed),
+    },
+    {
+      id: 'e-contacts-center',
+      source: 'contacts',
+      target: 'center',
+      targetHandle: 'left',
+      ...edgeStyle(contactsActive),
+    },
+    {
+      id: 'e-catering-center',
+      source: 'catering',
+      target: 'center',
+      targetHandle: 'right',
+      ...edgeStyle(cateringConfirmed),
+    },
+    {
+      id: 'e-schedule-center',
+      source: 'schedule',
+      target: 'center',
+      targetHandle: 'bottom',
+      ...edgeStyle(scheduleReady),
+    },
+    {
+      id: 'e-topics-center',
+      source: 'topics',
+      target: 'center',
+      targetHandle: 'bottom',
+      ...edgeStyle(topicsReady),
+    },
   ];
 }
+
+/* ─────────────────────────────────────────────
+   Empty state component
+   ───────────────────────────────────────────── */
+
+function EmptyState() {
+  return (
+    <div className="flex-1 h-full flex items-center justify-center bg-muted/20">
+      <div className="text-center max-w-sm px-6">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+          <svg
+            className="w-8 h-8 text-primary/60"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+            />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-foreground mb-1">
+          Event Whiteboard
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Select an event or start planning in the chat to see your event visualized here.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Main WhiteboardView component
+   ───────────────────────────────────────────── */
 
 export function WhiteboardView() {
   const activeEventId = useAppStore((s) => s.activeEventId);
@@ -230,13 +301,17 @@ export function WhiteboardView() {
 
     fetchDetails();
 
-    // Poll every 10 seconds to pick up changes
-    const interval = setInterval(fetchDetails, 10000);
+    // Poll every 5 seconds to pick up changes
+    const interval = setInterval(fetchDetails, 5000);
     return () => clearInterval(interval);
   }, [activeEventId]);
 
   const nodes = useMemo(() => buildNodes(eventData), [eventData]);
   const edges = useMemo(() => buildEdges(eventData), [eventData]);
+
+  if (!activeEventId) {
+    return <EmptyState />;
+  }
 
   return (
     <div className="flex-1 h-full">
@@ -245,6 +320,7 @@ export function WhiteboardView() {
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
+        fitViewOptions={{ padding: 0.3 }}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
@@ -257,13 +333,23 @@ export function WhiteboardView() {
         <Controls showInteractive={false} />
         <MiniMap
           nodeColor={(node) => {
-            const color = node.data?.statusColor;
-            switch (color) {
-              case 'green': return '#22c55e';
-              case 'yellow': return '#eab308';
-              case 'red': return '#ef4444';
-              case 'blue': return '#3b82f6';
-              default: return '#94a3b8';
+            switch (node.type) {
+              case 'centerStatus':
+                return '#3b82f6';
+              case 'dateTime':
+                return '#22c55e';
+              case 'venue':
+                return '#22c55e';
+              case 'catering':
+                return '#eab308';
+              case 'schedule':
+                return '#22c55e';
+              case 'contacts':
+                return '#3b82f6';
+              case 'topics':
+                return '#22c55e';
+              default:
+                return '#94a3b8';
             }
           }}
         />
