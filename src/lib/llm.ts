@@ -4,8 +4,9 @@ import { ChatBedrockConverse } from '@langchain/aws';
  * LLM Factory — creates the right model client based on env config.
  *
  * When USE_VERCEL_AI_GATEWAY=true:
- *   Uses Vercel AI Gateway (dynamic import of @langchain/openai)
+ *   Uses Vercel AI Gateway via OpenAI-compatible API
  *   Base URL: https://ai-gateway.vercel.sh/v1
+ *   Model names: anthropic/claude-sonnet-4, anthropic/claude-haiku-4.5
  *
  * When USE_VERCEL_AI_GATEWAY=false (default):
  *   Uses AWS Bedrock directly
@@ -23,7 +24,7 @@ export function createPrimaryLLM(): any {
   if (useGateway()) {
     const { ChatOpenAI } = require('@langchain/openai');
     return new ChatOpenAI({
-      modelName: process.env.AI_PRIMARY_MODEL || 'anthropic/claude-sonnet-4-20250514',
+      modelName: process.env.AI_PRIMARY_MODEL || 'anthropic/claude-sonnet-4',
       openAIApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
       configuration: {
         baseURL: 'https://ai-gateway.vercel.sh/v1',
@@ -52,7 +53,7 @@ export function createFastLLM(): any {
   if (useGateway()) {
     const { ChatOpenAI } = require('@langchain/openai');
     return new ChatOpenAI({
-      modelName: process.env.AI_FAST_MODEL || 'anthropic/claude-3-haiku-20240307',
+      modelName: process.env.AI_FAST_MODEL || 'anthropic/claude-haiku-4.5',
       openAIApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
       configuration: {
         baseURL: 'https://ai-gateway.vercel.sh/v1',
