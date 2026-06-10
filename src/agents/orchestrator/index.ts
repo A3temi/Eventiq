@@ -1,13 +1,8 @@
-import { generateText } from 'ai';
-import { primaryModel } from '@/lib/ai-gateway';
-import { createEvent, getEvent, updateEvent } from '@/lib/db/events';
+import { runAgentGraph } from '@/agents/graph';
+import { createEvent, getEvent } from '@/lib/db/events';
 import { createMessage, getRecentMessages } from '@/lib/db/conversations';
-import { createTask } from '@/lib/db/tasks';
+import { getCreditBalance, deductCredits } from '@/lib/db/credits';
 import type { EventBrief } from '@/types/event';
-import type { Intent, AgentType } from '@/types/agents';
-import { parseIntent } from './intent-parser';
-import { delegateToAgent } from './delegator';
-import { checkBudgetApproval } from './approval';
 
 interface OrchestrateInput {
   message: string;
@@ -25,123 +20,71 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
   const { message, userId } = input;
   let { eventId } = input;
 
-  // Load context
+  // Check credits
+  const creditBalance = await getCreditBalance(userId);
+  if (creditBalance.balance <= 0) {
+    return {
+      content: "You're out of credits. Head to Settings to purchase more — plans start at $5 for 500 credits.",
+      eventId: eventId || undefined,
+      metadata: { agentName: 'Eventiq' },
+    };
+  }
+
+  // Load or create event
   let event: EventBrief | null = null;
   if (eventId) {
     event = await getEvent(eventId);
   }
-
-  const recentMessages = eventId ? await getRecentMessages(eventId, 10) : [];
-
-  // Step 1: Parse intent
-  const intent = await parseIntent(message, event, recentMessages);
-
-  // Step 2: Handle event creation if needed
-  if (intent.type === 'create_event' && !event) {
-    event = await createEvent(userId, {
-      name: (intent.parameters.name as string) || 'New Event',
-      type: (intent.parameters.type as string) || '',
-      date: (intent.parameters.date as string) || '',
-      attendeeCount: (intent.parameters.attendeeCount as number) || 0,
-      budget: intent.parameters.budget
-        ? (intent.parameters.budget as EventBrief['budget'])
-        : { total: 0, currency: 'SGD', categories: [] },
-    });
-    eventId = event.id;
-  }
-
-  if (!eventId) {
-    // Create a default event for new conversations
+  if (!event) {
     event = await createEvent(userId, { name: 'New Event' });
     eventId = event.id;
   }
 
+  // Load conversation history
+  const recentMessages = await getRecentMessages(eventId!, 10);
+  const history = recentMessages.map(m => ({
+    role: m.role,
+    content: m.content,
+  }));
+
   // Save user message
-  await createMessage(eventId, 'user', message);
+  await createMessage(eventId!, 'user', message);
 
-  // Step 3: Check for missing Event_Brief fields
-  const missingFields = getMissingFields(event);
-  if (missingFields.length > 0 && intent.type === 'create_event') {
-    const followUp = generateFollowUpQuestions(missingFields);
-    await createMessage(eventId, 'assistant', followUp);
-    return { content: followUp, eventId };
-  }
+  // Deduct credits
+  await deductCredits(userId, 2, 'agent_call', eventId!);
 
-  // Step 4: Delegate to specialized agents
-  const results: string[] = [];
-  for (const agentType of intent.requiredAgents) {
-    const task = await createTask(eventId, {
-      type: agentType,
-      action: intent.type,
-      parameters: intent.parameters,
-      priority: 'medium',
-      requiresApproval: shouldRequireApproval(intent, agentType),
+  try {
+    // Run the LangGraph multi-agent system
+    const { response, toolsUsed } = await runAgentGraph(message, history);
+
+    // Deduct extra for tool usage
+    if (toolsUsed.length > 0) {
+      await deductCredits(userId, toolsUsed.length, 'tool_calls', eventId!);
+    }
+
+    // Save response
+    await createMessage(eventId!, 'assistant', response, {
+      agentName: 'Eventiq',
+      creditsCost: 2 + toolsUsed.length,
     });
 
-    const result = await delegateToAgent(agentType, task, event!, userId);
-    results.push(result.summary);
+    return {
+      content: response,
+      eventId: eventId || undefined,
+      metadata: {
+        agentName: 'Eventiq',
+        creditsCost: 2 + toolsUsed.length,
+        toolsUsed,
+      },
+    };
+  } catch (error) {
+    console.error('Agent graph error:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+
+    return {
+      content: `I encountered an issue: ${errorMsg}. Please try rephrasing your request.`,
+      eventId: eventId || undefined,
+      metadata: { agentName: 'Eventiq', error: errorMsg },
+    };
   }
-
-  // Step 5: Compose response
-  const response = results.length > 0
-    ? results.join('\n\n')
-    : await generateResponse(message, intent, event!);
-
-  await createMessage(eventId, 'assistant', response);
-
-  return {
-    content: response,
-    eventId,
-    metadata: {
-      agentName: 'Orchestrator',
-      intent: intent.type,
-    },
-  };
-}
-
-function getMissingFields(event: EventBrief | null): string[] {
-  if (!event) return ['type', 'date', 'attendeeCount', 'budget'];
-  const missing: string[] = [];
-  if (!event.type) missing.push('type');
-  if (!event.date) missing.push('date');
-  if (!event.attendeeCount) missing.push('attendeeCount');
-  if (!event.budget || event.budget.total === 0) missing.push('budget');
-  return missing;
-}
-
-function generateFollowUpQuestions(missingFields: string[]): string {
-  const questions: string[] = ['I need a few more details to get started:'];
-  
-  const fieldQuestions: Record<string, string> = {
-    type: '• What type of event is this? (conference, workshop, corporate dinner, meetup, party, etc.)',
-    date: '• When is the event? (date and time)',
-    attendeeCount: '• How many attendees are you expecting?',
-    budget: '• What\'s your total budget in SGD?',
-  };
-
-  for (const field of missingFields) {
-    if (fieldQuestions[field]) questions.push(fieldQuestions[field]);
-  }
-
-  return questions.join('\n');
-}
-
-function shouldRequireApproval(intent: Intent, agentType: AgentType): boolean {
-  if (intent.type === 'make_payment') return true;
-  if (intent.type === 'send_message' && agentType === 'communication') return true;
-  return false;
-}
-
-async function generateResponse(message: string, intent: Intent, event: EventBrief): Promise<string> {
-  const { text } = await generateText({
-    model: primaryModel,
-    system: `You are an AI event planning assistant focused on Singapore events. 
-You help organize events end-to-end: venues, vendors, payments, communications, scheduling.
-Be concise and actionable. Always provide next steps.
-Current event: ${JSON.stringify({ name: event.name, type: event.type, date: event.date, attendees: event.attendeeCount, budget: event.budget.total })}`,
-    prompt: message,
-    maxOutputTokens: 1024,
-  });
-
-  return text;
 }
