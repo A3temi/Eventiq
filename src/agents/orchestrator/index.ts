@@ -49,13 +49,14 @@ function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
   const lines = response.split('\n');
   let currentOption: Partial<OptionCard> | null = null;
 
-  // Determine type from the last search tool used
+  // Determine base type from tools, but we'll refine per-option using content
   const lastSearchTool = searchTools[searchTools.length - 1];
   let defaultType = 'option';
   if (lastSearchTool === 'search_venues') defaultType = 'venue';
   else if (lastSearchTool === 'search_vendors') defaultType = 'vendor';
   else if (lastSearchTool === 'search_catering') defaultType = 'food';
-  else if (lastSearchTool === 'web_search') defaultType = 'result';
+  // For web_search, we infer per-option from content
+  else if (lastSearchTool === 'web_search') defaultType = '';
 
   for (const line of lines) {
     // SKIP lines that look like schedule/time slots (e.g. "3:00-3:10 | Welcome")
@@ -125,10 +126,23 @@ function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
     options.push(currentOption as OptionCard);
   }
 
-  // Cap descriptions
+  // Cap descriptions and infer type from content if not set by tool
+  const venueWords = /\b(venue|space|room|hall|hotel|resort|centre|center|auditorium|rooftop|ballroom|meeting room)\b/i;
+  const foodWords = /\b(cater|food|buffet|menu|cuisine|halal|vegetarian|lunch|dinner|breakfast|meal|kitchen|chef|bento|pax)\b/i;
+  const vendorWords = /\b(photograph|video|AV|audio|visual|decorator|florist|flower|entertainment|DJ|emcee|band|lighting)\b/i;
+
   for (const opt of options) {
     if (opt.description && opt.description.length > 200) {
       opt.description = opt.description.slice(0, 197) + '...';
+    }
+
+    // Infer type from name + description if defaultType was empty (web_search)
+    if (!opt.type || opt.type === '') {
+      const text = `${opt.name} ${opt.description}`;
+      if (venueWords.test(text)) opt.type = 'venue';
+      else if (foodWords.test(text)) opt.type = 'food';
+      else if (vendorWords.test(text)) opt.type = 'vendor';
+      else opt.type = 'result';
     }
   }
 
@@ -281,6 +295,8 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
   try {
     // Run the LangGraph multi-agent system
     const { response, toolsUsed } = await runAgentGraph(message, history);
+
+    console.log('[Orchestrator] toolsUsed:', toolsUsed);
 
     // Deduct additional credits for tool usage
     const toolCost = toolsUsed.length;
