@@ -49,6 +49,10 @@ export default function Home() {
   // Adapted view models for every event
   const events = useAllEventModels();
   const activeEvent = useEventModel(activeEventId);
+  const openVendor = useMemo(
+    () => activeEvent?.vendors.find((v) => v.id === openVendorId) ?? null,
+    [activeEvent, openVendorId],
+  );
 
   // theme bootstrap
   useEffect(() => {
@@ -95,11 +99,6 @@ export default function Home() {
       </div>
     );
   }
-
-  const openVendor = useMemo(
-    () => activeEvent?.vendors.find((v) => v.id === openVendorId) ?? null,
-    [activeEvent, openVendorId],
-  );
 
   const handleNewEvent = () => {
     setActiveEvent(null);
