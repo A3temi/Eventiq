@@ -8,41 +8,35 @@ interface MarkdownMessageProps {
   isUser?: boolean;
 }
 
-/** Extract all URLs from markdown content */
 function extractUrls(content: string): string[] {
   const urls: string[] = [];
-  // Match markdown links [text](url)
   const mdLinkRegex = /\[(?:[^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
   let match: RegExpExecArray | null;
   while ((match = mdLinkRegex.exec(content)) !== null) {
     urls.push(match[1]);
   }
-  // Match bare URLs not already inside markdown link syntax
   const bareUrlRegex = /(?<!\]\()https?:\/\/[^\s)>\]]+/g;
   while ((match = bareUrlRegex.exec(content)) !== null) {
-    if (!urls.includes(match[0])) {
-      urls.push(match[0]);
-    }
+    if (!urls.includes(match[0])) urls.push(match[0]);
   }
   return [...new Set(urls)];
 }
 
-/** Get domain from URL */
 function getDomain(url: string): string {
-  try {
-    const hostname = new URL(url).hostname;
-    return hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch { return url; }
 }
 
 export function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const urls = useMemo(() => extractUrls(content), [content]);
 
+  const wrapperClass = isUser
+    ? 'text-sm max-w-none text-primary-foreground'
+    : 'text-sm max-w-none text-foreground';
+
   return (
-    <div className={`text-sm prose prose-sm max-w-none ${isUser ? 'prose-invert' : ''}`}>
+    <div className={wrapperClass}>
       <ReactMarkdown
         components={{
           h1: ({ children }) => <h3 className="text-base font-bold mt-3 mb-1.5 first:mt-0">{children}</h3>,
@@ -53,12 +47,9 @@ export function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
           ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
           li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-          a: ({ href, children }) => (
-            // Render link text only (no visible URL), sources shown below
-            <span className="font-medium">{children}</span>
-          ),
+          a: ({ children }) => <span className="font-medium underline">{children}</span>,
           code: ({ children }) => (
-            <code className="px-1 py-0.5 rounded bg-muted text-xs font-mono">{children}</code>
+            <code className="px-1 py-0.5 rounded bg-foreground/10 text-xs font-mono">{children}</code>
           ),
           hr: () => <hr className="my-3 border-border/50" />,
         }}
@@ -66,7 +57,6 @@ export function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
         {content}
       </ReactMarkdown>
 
-      {/* Sources section */}
       {!isUser && urls.length > 0 && (
         <div className="mt-3 pt-2 border-t border-border/40">
           <button

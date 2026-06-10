@@ -15,6 +15,7 @@ import { NewEventChat } from '@/components/eventiq/NewEventChat';
 import { EventAgentChat } from '@/components/eventiq/EventAgentChat';
 import { FloatingAgentChat } from '@/components/eventiq/FloatingAgentChat';
 import { WhiteboardView } from '@/components/whiteboard/WhiteboardView';
+import { LandingPage } from '@/components/landing/LandingPage';
 import { useAppStore } from '@/stores/app-store';
 import { useChatStore } from '@/stores/chat-store';
 import {
@@ -26,7 +27,7 @@ import {
 type EventView = 'dashboard' | 'whiteboard' | 'chat';
 
 export default function Home() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
 
   // Active event lives in the app-store so whiteboard/chat logic keeps working.
   const activeEventId = useAppStore((s) => s.activeEventId);
@@ -47,6 +48,10 @@ export default function Home() {
   const [eventView, setEventView] = useState<EventView>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Adapted view models for every event (summary + cached details).
+  const events = useAllEventModels();
+  const activeEvent = useEventModel(activeEventId);
+
   // theme bootstrap
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -64,15 +69,12 @@ export default function Home() {
     } catch {}
   }, [dark]);
 
-  // Fetch events once the user is authenticated (mirrors old EventSidebar).
+  // Fetch events once the user is authenticated.
   useEffect(() => {
     if (session?.user?.email) {
       fetchEvents();
     }
   }, [session, fetchEvents]);
-
-  // Adapted view models for every event (summary + cached details).
-  const events = useAllEventModels();
 
   // Hydrate details for all known events so summaries/calendar/providers are rich.
   const idsKey = events.map((e) => e.id).join(',');
@@ -89,11 +91,24 @@ export default function Home() {
     return () => stopPolling();
   }, [activeEventId, whiteboardVisible, startPolling, stopPolling]);
 
-  const activeEvent = useEventModel(activeEventId);
   const openVendor = useMemo(
     () => activeEvent?.vendors.find((v) => v.id === openVendorId) ?? null,
     [activeEvent, openVendorId],
   );
+
+  // All hooks above must run before any conditional return. The deployed React
+  // #310 crash was caused by returning for auth/loading before useMemo ran.
+  if (status === 'unauthenticated') {
+    return <LandingPage />;
+  }
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   const handleNewEvent = () => {
     setActiveEvent(null);

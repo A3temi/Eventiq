@@ -395,7 +395,9 @@ export function adaptEvent(summary: EventSummary, payload?: DetailsPayload): Eve
 
   const schedule: ScheduleItem[] | undefined = details.schedule?.map((s) => ({
     time: s.time,
-    title: s.title + (s.speaker ? ` — ${s.speaker}` : ''),
+    title: s.title,
+    speaker: s.speaker,
+    status: s.status,
   }));
 
   let budget: EventModel['budget'];

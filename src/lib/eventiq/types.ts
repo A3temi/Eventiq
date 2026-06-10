@@ -60,6 +60,8 @@ export interface Milestone {
 export interface ScheduleItem {
   time: string;
   title: string;
+  speaker?: string;
+  status?: 'confirmed' | 'discussing' | 'pending';
 }
 
 export interface EventModel {
