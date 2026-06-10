@@ -27,21 +27,7 @@ type EventView = 'dashboard' | 'chat';
 export default function Home() {
   const { data: session, status } = useSession();
 
-  // Show landing page for unauthenticated users
-  if (status === 'unauthenticated') {
-    return <LandingPage />;
-  }
-
-  // Show loading while checking auth
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen grid place-items-center">
-        <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
-      </div>
-    );
-  }
-
-  // Active event lives in the app-store so whiteboard/chat logic keeps working.
+  // ALL hooks must be called before any return (React rules of hooks)
   const activeEventId = useAppStore((s) => s.activeEventId);
   const setActiveEvent = useAppStore((s) => s.setActiveEvent);
   const fetchEvents = useAppStore((s) => s.fetchEvents);
@@ -59,6 +45,22 @@ export default function Home() {
   const [dark, setDark] = useState(false);
   const [eventView, setEventView] = useState<EventView>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Show landing page for unauthenticated users
+  if (status === 'unauthenticated') {
+    return <LandingPage />;
+  }
+
+  // Show loading while checking auth
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  // Active event lives in the app-store so whiteboard/chat logic keeps working.
 
   // theme bootstrap
   useEffect(() => {
