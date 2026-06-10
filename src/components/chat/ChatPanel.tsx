@@ -1,26 +1,41 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useSession, signIn } from 'next-auth/react';
 import { useChatStore } from '@/stores/chat-store';
-import { useAppStore } from '@/stores/app-store';
-import { Send, Paperclip, Bot, User, Loader2 } from 'lucide-react';
+import { Send, Paperclip, Bot, User, Loader2, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalCard } from './ApprovalCard';
 import { ReasoningTrace } from './ReasoningTrace';
 
 export function ChatPanel() {
   const [input, setInput] = useState('');
+  const [credits, setCredits] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { data: session, status } = useSession();
   const { messages, isLoading, pendingApprovals } = useChatStore();
-  const credits = useAppStore((s) => s.credits);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    if (session?.user?.email) {
+      fetch('/api/credits')
+        .then((r) => r.json())
+        .then((d) => setCredits(d.balance))
+        .catch(() => {});
+    }
+  }, [session]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+
+    if (!session) {
+      signIn('google');
+      return;
+    }
 
     const userMessage = {
       id: crypto.randomUUID(),
@@ -39,20 +54,30 @@ export function ChatPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMessage.content,
-          eventId: useAppStore.getState().activeEventId,
+          eventId: null,
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        useChatStore.getState().addMessage({
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: data.content,
-          timestamp: new Date().toISOString(),
-          metadata: data.metadata,
-        });
+      const data = await response.json();
+
+      if (response.status === 401) {
+        signIn('google');
+        return;
       }
+
+      useChatStore.getState().addMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: data.content || data.error || 'No response',
+        timestamp: new Date().toISOString(),
+        metadata: data.metadata,
+      });
+
+      // Refresh credits after operation
+      fetch('/api/credits')
+        .then((r) => r.json())
+        .then((d) => setCredits(d.balance))
+        .catch(() => {});
     } catch (error) {
       useChatStore.getState().addMessage({
         id: crypto.randomUUID(),
@@ -71,12 +96,27 @@ export function ChatPanel() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <Bot className="w-12 h-12 text-primary/40 mb-4" />
-            <h2 className="text-lg font-medium">Eventiq</h2>
-            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+              <Bot className="w-8 h-8 text-primary" />
+            </div>
+            <h2 className="text-xl font-semibold">Eventiq</h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-md">
               Describe your event and I&apos;ll handle venues, vendors,
               tickets, payments, and more. Singapore-focused.
             </p>
+            {!session && status !== 'loading' && (
+              <button
+                onClick={() => signIn('google')}
+                className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors"
+              >
+                Sign in with Google to get started
+              </button>
+            )}
+            {session && (
+              <div className="mt-4 text-xs text-muted-foreground">
+                ✨ {credits ?? '...'} credits available
+              </div>
+            )}
           </div>
         ) : (
           messages.map((msg) => (
@@ -97,6 +137,8 @@ export function ChatPanel() {
                 'rounded-lg p-3 max-w-prose',
                 msg.role === 'user'
                   ? 'bg-primary text-primary-foreground'
+                  : msg.role === 'system'
+                  ? 'bg-destructive/10 border border-destructive/20'
                   : 'bg-muted'
               )}>
                 {msg.metadata?.agentName && (
@@ -130,18 +172,6 @@ export function ChatPanel() {
           </div>
         )}
 
-        {/* Pending approvals */}
-        {pendingApprovals.filter((a) => a.status === 'pending').length > 0 && (
-          <div className="border-t pt-4 mt-4">
-            <h3 className="text-sm font-medium mb-2">Pending Approvals</h3>
-            {pendingApprovals
-              .filter((a) => a.status === 'pending')
-              .map((approval) => (
-                <ApprovalCard key={approval.id} approval={approval} />
-              ))}
-          </div>
-        )}
-
         <div ref={messagesEndRef} />
       </div>
 
@@ -159,22 +189,22 @@ export function ChatPanel() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Describe your event or ask me anything..."
-            className="flex-1 px-4 py-2 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+            placeholder={session ? 'Describe your event or ask me anything...' : 'Sign in to start planning...'}
+            className="flex-1 px-4 py-2.5 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="p-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            className="p-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
             aria-label="Send message"
           >
-            <Send className="w-5 h-5" />
+            {!session ? <Lock className="w-4 h-4" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
-        {credits && (
+        {session && credits !== null && (
           <div className="text-center text-xs text-muted-foreground mt-2">
-            {credits.balance} credits remaining
+            ✨ {credits} credits remaining
           </div>
         )}
       </form>

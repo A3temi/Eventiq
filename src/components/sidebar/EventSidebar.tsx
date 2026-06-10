@@ -3,6 +3,7 @@
 import { useAppStore } from '@/stores/app-store';
 import { Plus, Calendar, Circle } from 'lucide-react';
 import { cn, formatDate, timeAgo } from '@/lib/utils';
+import { UserMenu } from './UserMenu';
 import type { EventStatus } from '@/types/event';
 
 const STATUS_COLORS: Record<EventStatus, string> = {
@@ -15,14 +16,18 @@ const STATUS_COLORS: Record<EventStatus, string> = {
 
 export function EventSidebar() {
   const { events, activeEventId, setActiveEvent } = useAppStore();
-  const credits = useAppStore((s) => s.credits);
 
   return (
     <aside className="w-72 border-r bg-card flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b">
         <div className="flex items-center justify-between">
-          <h1 className="font-semibold text-lg">Events</h1>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
+              <span className="text-primary-foreground text-xs font-bold">E</span>
+            </div>
+            <h1 className="font-semibold text-lg">Eventiq</h1>
+          </div>
           <button
             className="p-2 rounded-md hover:bg-accent transition-colors"
             aria-label="Create new event"
@@ -30,11 +35,6 @@ export function EventSidebar() {
             <Plus className="w-4 h-4" />
           </button>
         </div>
-        {credits && (
-          <div className="mt-2 text-xs text-muted-foreground">
-            Credits: <span className="font-medium text-foreground">{credits.balance}</span>
-          </div>
-        )}
       </div>
 
       {/* Event List */}
@@ -69,10 +69,8 @@ export function EventSidebar() {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="p-3 border-t text-xs text-muted-foreground text-center">
-        Eventiq • Singapore
-      </div>
+      {/* User Menu (bottom) */}
+      <UserMenu />
     </aside>
   );
 }

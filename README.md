@@ -141,7 +141,12 @@ vercel deploy --prod
 - `DYNAMODB_TABLE_PREFIX` (eventbot)
 - `WAHA_API_URL`, `WAHA_API_KEY`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 - `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
+
+**Google OAuth setup:**
+- Authorized JavaScript origin: `https://your-app.vercel.app`
+- Authorized redirect URI: `https://your-app.vercel.app/api/auth/callback/google`
 
 ## Tech Stack
 

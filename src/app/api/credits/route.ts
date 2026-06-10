@@ -1,0 +1,14 @@
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../auth/[...nextauth]/route';
+import { getCreditBalance } from '@/lib/db/credits';
+
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const balance = await getCreditBalance(session.user.email);
+  return NextResponse.json(balance);
+}
