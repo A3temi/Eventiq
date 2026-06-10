@@ -3,9 +3,20 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+function getStripe() {
+  const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!secretKey) throw new Error('Stripe is not configured');
+  return new Stripe(secretKey);
+}
 
-// $5 = 500 credits, $10 = 1100 credits, $20 = 2500 credits, $50 = 7000 credits
+function buildReturnUrl(req: NextRequest, path: string, params: Record<string, string>) {
+  const safePath = path.startsWith('/') && !path.startsWith('//') ? path : '/settings';
+  const url = new URL(safePath, req.nextUrl.origin);
+  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+  return url.toString().replace('%7BCHECKOUT_SESSION_ID%7D', '{CHECKOUT_SESSION_ID}');
+}
+
+// S$5 = 500 credits, S$10 = 1100 credits, S$20 = 2500 credits, S$50 = 7000 credits
 const CREDIT_TIERS: Record<string, { amount: number; credits: number; label: string }> = {
   '5': { amount: 500, credits: 500, label: '500 credits' },
   '10': { amount: 1000, credits: 1100, label: '1,100 credits' },
@@ -19,20 +30,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { tier } = await req.json();
+  const { tier, returnPath = '/settings' } = await req.json();
   const plan = CREDIT_TIERS[tier];
 
   if (!plan) {
     return NextResponse.json({ error: 'Invalid tier' }, { status: 400 });
   }
 
+  const metadata = {
+    type: 'credits',
+    userId: session.user.email,
+    credits: String(plan.credits),
+    tier: String(tier),
+  };
+
+  const stripe = getStripe();
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: 'payment',
+    payment_method_types: ['paynow'],
+    client_reference_id: session.user.email,
     customer_email: session.user.email,
     line_items: [
       {
         price_data: {
-          currency: 'usd',
+          currency: 'sgd',
           product_data: {
             name: `Eventiq Credits — ${plan.label}`,
             description: `Add ${plan.label} to your Eventiq account`,
@@ -42,14 +63,14 @@ export async function POST(req: NextRequest) {
         quantity: 1,
       },
     ],
-    metadata: {
-      type: 'credits',
-      userId: session.user.email,
-      credits: String(plan.credits),
-    },
-    success_url: `${process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL}/settings?purchased=true`,
-    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL}/settings`,
+    metadata,
+    payment_intent_data: { metadata },
+    success_url: buildReturnUrl(req, returnPath, {
+      purchased: 'true',
+      session_id: '{CHECKOUT_SESSION_ID}',
+    }),
+    cancel_url: buildReturnUrl(req, returnPath, { purchased: 'cancelled' }),
   });
 
-  return NextResponse.json({ url: checkoutSession.url });
+  return NextResponse.json({ id: checkoutSession.id, url: checkoutSession.url });
 }
