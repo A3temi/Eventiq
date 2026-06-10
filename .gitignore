@@ -1,0 +1,43 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# env files (secrets)
+.env
+.env*.local
+
+# debug
+npm-debug.log*
+
+# misc
+.DS_Store
+*.pem
+thumbs.db
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# WAHA QR codes (temporary)
+waha-qr.png
+
+# One-off infra scripts with credentials
+infra/test-email.js
+infra/send-email.js
+infra/fix-waha-auth.js
+infra/test-bedrock.js

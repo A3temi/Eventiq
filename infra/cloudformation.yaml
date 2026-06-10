@@ -1,0 +1,282 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AI Event Organizer - Full AWS Infrastructure
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [production, staging]
+  TablePrefix:
+    Type: String
+    Default: eventbot
+
+Resources:
+  # ============================================
+  # DynamoDB Tables
+  # ============================================
+  
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-events'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: userId, AttributeType: S }
+        - { AttributeName: createdAt, AttributeType: S }
+        - { AttributeName: status, AttributeType: S }
+        - { AttributeName: date, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: UserEventsIndex
+          KeySchema:
+            - { AttributeName: userId, KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: EventStatusIndex
+          KeySchema:
+            - { AttributeName: status, KeyType: HASH }
+            - { AttributeName: date, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  ConversationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-conversations'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  TasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-tasks'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  PaymentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-payments'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+
+  CreditsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-credits'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+
+  CreditTransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-credit-transactions'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+
+  AttendeesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-attendees'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: qrCode, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: QRCodeIndex
+          KeySchema:
+            - { AttributeName: qrCode, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+
+  CommunicationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-communications'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-audit'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+
+  # ============================================
+  # S3 Bucket for Assets
+  # ============================================
+  
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'eventbot-assets-${AWS::AccountId}'
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+  # ============================================
+  # SQS Queue for Agent Tasks
+  # ============================================
+
+  AgentTaskQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${TablePrefix}-agent-tasks'
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 86400
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt AgentTaskDLQ.Arn
+        maxReceiveCount: 3
+
+  AgentTaskDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${TablePrefix}-agent-tasks-dlq'
+      MessageRetentionPeriod: 1209600
+
+  # ============================================
+  # ECS Cluster for WAHA + Stagehand
+  # ============================================
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${TablePrefix}-services'
+      CapacityProviders: [FARGATE, FARGATE_SPOT]
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 1
+
+  # WAHA WhatsApp Service
+  WAHATaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${TablePrefix}-waha'
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ContainerDefinitions:
+        - Name: waha
+          Image: devlikeapro/waha:latest
+          PortMappings:
+            - ContainerPort: 3000
+              Protocol: tcp
+          Environment:
+            - { Name: WHATSAPP_DEFAULT_ENGINE, Value: WEBJS }
+            - { Name: WAHA_DASHBOARD_ENABLED, Value: 'true' }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref WAHALogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: waha
+
+  WAHALogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${TablePrefix}-waha'
+      RetentionInDays: 14
+
+  # Stagehand Browser Automation Service
+  StagehandTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${TablePrefix}-stagehand'
+      Cpu: '1024'
+      Memory: '2048'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ContainerDefinitions:
+        - Name: stagehand
+          Image: browserbase/stagehand:latest
+          PortMappings:
+            - ContainerPort: 3001
+              Protocol: tcp
+          Environment:
+            - { Name: HEADLESS, Value: 'true' }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref StagehandLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: stagehand
+
+  StagehandLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${TablePrefix}-stagehand'
+      RetentionInDays: 14
+
+  # ============================================
+  # SES Email Identity (requires verification)
+  # ============================================
+
+  SESEmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Sub 'noreply@eventbot.sg'
+
+Outputs:
+  EventsTableArn:
+    Value: !GetAtt EventsTable.Arn
+  AssetsBucketName:
+    Value: !Ref AssetsBucket
+  AgentTaskQueueUrl:
+    Value: !GetAtt AgentTaskQueue.QueueUrl
+  ECSClusterName:
+    Value: !Ref ECSCluster
