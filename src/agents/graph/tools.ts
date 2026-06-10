@@ -8,6 +8,7 @@ import { run as runSchedule } from '@/agents/schedule';
 import { run as runAnalytics } from '@/agents/analytics';
 import { run as runAttendee } from '@/agents/attendee';
 import { run as runWhiteboard } from '@/agents/whiteboard';
+import { run as runForms } from '@/agents/forms';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AGENT REGISTRY — maps agent names to their run functions
@@ -22,6 +23,7 @@ const agentRegistry: Record<string, (task: string) => Promise<string>> = {
   analytics: runAnalytics,
   attendee: runAttendee,
   whiteboard: runWhiteboard,
+  forms: runForms,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -45,11 +47,12 @@ Available agents:
 - analytics: Budget tracking, cost breakdowns, per-person calculations, spending alerts.
 - attendee: Manage guest lists, RSVPs, dietary preferences, attendance tracking.
 - whiteboard: Manages event state. Saves confirmed choices, removes cancelled items, generates visualization. Call after ANY decision is confirmed.
+- forms: Generate registration forms, feedback surveys, RSVP pages, ticket pages, event landing pages. Returns structured page configs.
 
 IMPORTANT: Be specific in the task description. Include all relevant context (headcount, budget, date, location, dietary needs, etc.)
 For whiteboard agent: prefix the task with "eventId:<id> | " so it knows which event to update.`,
   schema: z.object({
-    agent: z.enum(['researcher', 'communication', 'venue', 'vendor', 'schedule', 'analytics', 'attendee', 'whiteboard'])
+    agent: z.enum(['researcher', 'communication', 'venue', 'vendor', 'schedule', 'analytics', 'attendee', 'whiteboard', 'forms'])
       .describe('Which agent to delegate to'),
     task: z.string().describe('Detailed task description with all relevant context for the agent'),
   }),

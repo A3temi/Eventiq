@@ -24,6 +24,7 @@ export const TABLES = {
   attendees: `${prefix}-attendees`,
   communications: `${prefix}-communications`,
   audit: `${prefix}-audit`,
+  pages: `${prefix}-pages`,
 } as const;
 
 /** Generate a TTL 90 days from now (epoch seconds) */

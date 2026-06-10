@@ -101,27 +101,11 @@ export async function runAgentGraph(
     new HumanMessage(userMessage),
   ];
 
-  // Race the graph invocation against a 50s timeout to avoid 504s on Vercel free tier
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('TIMEOUT')), 50000)
-  );
-
-  let result: AgentStateType;
-  try {
-    result = await Promise.race([
-      graph.invoke({ messages, toolsUsed: [] }),
-      timeout,
-    ]);
-  } catch (error) {
-    if (error instanceof Error && error.message === 'TIMEOUT') {
-      return {
-        response:
-          "I'm still working on this — the research is taking longer than expected. Could you try a more specific question, or ask me to continue?",
-        toolsUsed: ['timeout'],
-      };
-    }
-    throw error;
-  }
+  // Invoke the graph — no artificial timeout, let Vercel's maxDuration handle limits
+  const result = await graph.invoke({
+    messages,
+    toolsUsed: [],
+  });
 
   // Extract final response from the orchestrator
   const aiMessages = (result.messages as Array<{ _getType?: () => string; content: unknown; tool_calls?: unknown[] }>).filter((m) => {
@@ -159,7 +143,7 @@ export async function runAgentGraph(
  * Useful for testing or direct invocation outside the orchestrator.
  */
 export async function runSubAgent(
-  agent: 'researcher' | 'communication' | 'venue' | 'vendor' | 'schedule' | 'analytics' | 'attendee' | 'whiteboard',
+  agent: 'researcher' | 'communication' | 'venue' | 'vendor' | 'schedule' | 'analytics' | 'attendee' | 'whiteboard' | 'forms',
   task: string
 ): Promise<{ response: string }> {
   // Dynamic import to avoid circular dependencies
@@ -203,6 +187,11 @@ export async function runSubAgent(
     }
     case 'whiteboard': {
       const mod = await import('@/agents/whiteboard');
+      run = mod.run;
+      break;
+    }
+    case 'forms': {
+      const mod = await import('@/agents/forms');
       run = mod.run;
       break;
     }
