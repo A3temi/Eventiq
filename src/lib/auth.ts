@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import { addCredits, getCreditBalance } from '@/lib/db/credits';
 
 export const authOptions: NextAuthOptions = {
@@ -8,6 +9,25 @@ export const authOptions: NextAuthOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
+    // Dev-mode credentials provider — allows local sign-in without Google OAuth
+    ...(process.env.NODE_ENV === 'development' ? [
+      CredentialsProvider({
+        name: 'Dev Login',
+        credentials: {
+          email: { label: 'Email', type: 'email', placeholder: 'dev@eventiq.local' },
+        },
+        async authorize(credentials) {
+          if (credentials?.email) {
+            return {
+              id: credentials.email,
+              email: credentials.email,
+              name: credentials.email.split('@')[0],
+            };
+          }
+          return null;
+        },
+      }),
+    ] : []),
   ],
   callbacks: {
     async signIn({ user }) {
@@ -37,6 +57,9 @@ export const authOptions: NextAuthOptions = {
       }
       return token;
     },
+  },
+  session: {
+    strategy: 'jwt',
   },
   secret: process.env.NEXTAUTH_SECRET,
 };

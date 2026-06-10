@@ -14,7 +14,7 @@ export function ModeToggle() {
   ];
 
   return (
-    <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-card border rounded-lg p-1 shadow-sm">
+    <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
       {modes.map(({ id, label, icon: Icon }) => (
         <button
           key={id}
@@ -27,7 +27,7 @@ export function ModeToggle() {
           {mode === id && (
             <motion.div
               layoutId="mode-indicator"
-              className="absolute inset-0 bg-primary/10 rounded-md"
+              className="absolute inset-0 bg-background border rounded-md shadow-sm"
               transition={{ type: 'spring', duration: 0.3 }}
             />
           )}

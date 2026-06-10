@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSession, signIn } from 'next-auth/react';
+import ReactMarkdown from 'react-markdown';
 import { useChatStore } from '@/stores/chat-store';
 import { useAppStore } from '@/stores/app-store';
 import { Send, Paperclip, Bot, User, Loader2, Lock } from 'lucide-react';
@@ -17,7 +18,7 @@ export function ChatPanel() {
   const [credits, setCredits] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { data: session, status } = useSession();
-  const { messages, isLoading, pendingApprovals } = useChatStore();
+  const { messages, isLoading, historyLoading, pendingApprovals } = useChatStore();
   const activeEventId = useAppStore((s) => s.activeEventId);
   const fetchEvents = useAppStore((s) => s.fetchEvents);
 
@@ -122,7 +123,12 @@ export function ChatPanel() {
     <div className="flex flex-col h-full">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
+        {historyLoading ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground mt-2">Loading conversation...</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
               <Bot className="w-8 h-8 text-primary" />
@@ -177,7 +183,9 @@ export function ChatPanel() {
                     )}
                   </div>
                 )}
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                <div className="text-sm prose prose-sm prose-neutral max-w-none dark:prose-invert [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>li]:my-0.5 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&_a]:text-primary [&_a]:underline">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
 
                 {/* Thinking trace */}
                 {msg.metadata?.thinking && msg.metadata.thinking.length > 0 && (

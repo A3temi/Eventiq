@@ -12,9 +12,13 @@ interface ThinkingTraceProps {
 const TOOL_LABELS: Record<string, string> = {
   search_venues: 'Searched venues',
   search_vendors: 'Searched vendors',
+  search_catering: 'Searched catering',
+  web_search: 'Researched online',
   send_whatsapp: 'Sent WhatsApp message',
   send_email: 'Sent email',
   get_current_datetime: 'Checked date/time',
+  create_schedule: 'Built schedule',
+  get_budget_summary: 'Analyzed budget',
 };
 
 export function ThinkingTrace({ steps }: ThinkingTraceProps) {
