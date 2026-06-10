@@ -14,6 +14,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { WhiteboardNodeCard } from './WhiteboardNodeCard';
 import { useChatStore } from '@/stores/chat-store';
+import { useAppStore } from '@/stores/app-store';
 import type { WhiteboardNodeData } from '@/types/whiteboard';
 import type { ChatMessage } from '@/types/chat';
 
@@ -251,8 +252,12 @@ function buildNodesAndEdges(messages: ChatMessage[]): { nodes: Node[]; edges: Ed
 
 export function WhiteboardView() {
   const messages = useChatStore((s) => s.messages);
+  const activeEventId = useAppStore((s) => s.activeEventId);
+  const events = useAppStore((s) => s.events);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const activeEvent = events.find(e => e.id === activeEventId);
 
   // Rebuild whenever messages change
   useEffect(() => {
@@ -262,8 +267,25 @@ export function WhiteboardView() {
   }, [messages, messages.length, setNodes, setEdges]);
 
   return (
-    <div className="flex-1 h-full">
-      <ReactFlow
+    <div className="flex-1 h-full flex flex-col">
+      {/* Event header */}
+      {activeEvent && (
+        <div className="px-4 py-2 border-b bg-muted/30 shrink-0">
+          <h3 className="text-sm font-medium">{activeEvent.name}</h3>
+          <p className="text-xs text-muted-foreground">{activeEvent.summary || activeEvent.status}</p>
+        </div>
+      )}
+      {!activeEventId && (
+        <div className="flex-1 flex items-center justify-center text-center p-8">
+          <div>
+            <p className="text-sm text-muted-foreground">No event selected</p>
+            <p className="text-xs text-muted-foreground mt-1">Start a new chat or select an event from the sidebar</p>
+          </div>
+        </div>
+      )}
+      {activeEventId && (
+        <div className="flex-1">
+          <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
@@ -293,6 +315,8 @@ export function WhiteboardView() {
           }}
         />
       </ReactFlow>
+        </div>
+      )}
     </div>
   );
 }
