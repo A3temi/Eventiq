@@ -26,6 +26,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid tier' }, { status: 400 });
   }
 
+  // Use the request origin to build redirect URLs (most reliable)
+  const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://eventiq-psi.vercel.app';
+
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: 'payment',
     customer_email: session.user.email,
@@ -47,8 +50,8 @@ export async function POST(req: NextRequest) {
       userId: session.user.email,
       credits: String(plan.credits),
     },
-    success_url: `${process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL}/settings?purchased=true`,
-    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL}/settings`,
+    success_url: `${origin}/settings?purchased=true&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/settings`,
   });
 
   return NextResponse.json({ url: checkoutSession.url });

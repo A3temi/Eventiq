@@ -42,6 +42,23 @@ function SettingsContent() {
   const [saved, setSaved] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const justPurchased = searchParams.get('purchased') === 'true';
+  const stripeSessionId = searchParams.get('session_id');
+
+  // Confirm purchase and add credits when returning from Stripe
+  useEffect(() => {
+    if (justPurchased && stripeSessionId && session?.user?.email) {
+      fetch('/api/credits/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: stripeSessionId }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.newBalance) setCredits(data.newBalance);
+        })
+        .catch(() => {});
+    }
+  }, [justPurchased, stripeSessionId, session]);
 
   useEffect(() => {
     if (session?.user?.email) {
