@@ -1,0 +1,2 @@
+{"content":"**Vita Venue** - Premier event space rental in Singapore with excellent facilities.","eventId":"7d3b0087-f598-4203-b4d1-d2c044467dd3","metadata":{"agentName":"Eventiq","creditsCost":3,"toolsUsed":["search_venues"],"thinking":[{"tool":"search_venues","status":"completed","query":"Venue search","source":"Exa Search"}]}}
+200 9.824137

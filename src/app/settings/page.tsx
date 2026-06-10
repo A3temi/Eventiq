@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react';
 import { useState, useEffect, Suspense } from 'react';
 import { ArrowLeft, CreditCard, Mail, MessageCircle, Save, Sparkles, Check, Zap } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 interface UserSettings {
   customEmail: string;
@@ -14,10 +14,10 @@ interface UserSettings {
 }
 
 const CREDIT_TIERS = [
-  { tier: '5', price: '$5', credits: '500', perDollar: '100/$ ', popular: false },
-  { tier: '10', price: '$10', credits: '1,100', perDollar: '110/$', popular: true },
-  { tier: '20', price: '$20', credits: '2,500', perDollar: '125/$', popular: false },
-  { tier: '50', price: '$50', credits: '7,000', perDollar: '140/$', popular: false },
+  { tier: '5', price: 'S$5', credits: '500', perDollar: '100/S$ ', popular: false },
+  { tier: '10', price: 'S$10', credits: '1,100', perDollar: '110/S$', popular: true },
+  { tier: '20', price: 'S$20', credits: '2,500', perDollar: '125/S$', popular: false },
+  { tier: '50', price: 'S$50', credits: '7,000', perDollar: '140/S$', popular: false },
 ];
 
 export default function SettingsPage() {
@@ -30,6 +30,7 @@ export default function SettingsPage() {
 
 function SettingsContent() {
   const { data: session } = useSession();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [credits, setCredits] = useState<number | null>(null);
   const [settings, setSettings] = useState<UserSettings>({
@@ -41,24 +42,11 @@ function SettingsContent() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [confirmingPurchase, setConfirmingPurchase] = useState(false);
+  const [purchaseConfirmed, setPurchaseConfirmed] = useState(false);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const justPurchased = searchParams.get('purchased') === 'true';
   const stripeSessionId = searchParams.get('session_id');
-
-  // Confirm purchase and add credits when returning from Stripe
-  useEffect(() => {
-    if (justPurchased && stripeSessionId && session?.user?.email) {
-      fetch('/api/credits/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: stripeSessionId }),
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.newBalance) setCredits(data.newBalance);
-        })
-        .catch(() => {});
-    }
-  }, [justPurchased, stripeSessionId, session]);
 
   useEffect(() => {
     if (session?.user?.email) {
@@ -75,6 +63,43 @@ function SettingsContent() {
         .catch(() => {});
     }
   }, [session]);
+
+  useEffect(() => {
+    if (!session?.user?.email || !justPurchased || !stripeSessionId) return;
+
+    let cancelled = false;
+    setConfirmingPurchase(true);
+    setPurchaseError(null);
+
+    fetch('/api/credits/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: stripeSessionId }),
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not confirm payment');
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setPurchaseConfirmed(true);
+        if (typeof data.balance?.balance === 'number') setCredits(data.balance.balance);
+        router.replace('/settings#credits');
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPurchaseError(err instanceof Error ? err.message : 'Could not confirm payment');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setConfirmingPurchase(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.email, justPurchased, stripeSessionId, router]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -97,12 +122,15 @@ function SettingsContent() {
       const res = await fetch('/api/credits/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier }),
+        body: JSON.stringify({ tier, returnPath: '/settings' }),
       });
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Could not start checkout');
       }
+      window.location.href = data.url;
+    } catch (err) {
+      setPurchaseError(err instanceof Error ? err.message : 'Could not start checkout');
     } finally {
       setPurchasing(null);
     }
@@ -128,10 +156,16 @@ function SettingsContent() {
         </div>
 
         {/* Success Banner */}
-        {justPurchased && (
-          <div className="mb-6 p-4 rounded-xl bg-status-success/10 border border-status-success/20 flex items-center gap-3">
-            <Check className="w-5 h-5 text-status-success" />
-            <span className="text-sm font-medium">Credits added to your account!</span>
+        {(justPurchased || purchaseConfirmed || purchaseError) && (
+          <div className={`mb-6 p-4 rounded-xl border flex items-center gap-3 ${purchaseError ? 'bg-destructive/10 border-destructive/20' : 'bg-status-success/10 border-status-success/20'}`}>
+            <Check className={`w-5 h-5 ${purchaseError ? 'text-destructive' : 'text-status-success'}`} />
+            <span className="text-sm font-medium">
+              {purchaseError
+                ? purchaseError
+                : confirmingPurchase
+                  ? 'Confirming Stripe payment…'
+                  : 'Credits added to your account!'}
+            </span>
           </div>
         )}
 
@@ -200,7 +234,7 @@ function SettingsContent() {
           </div>
 
           <p className="text-[11px] text-muted-foreground mt-3 text-center">
-            Payments processed securely via Stripe. Credits never expire.
+            Payments are processed via Stripe PayNow sandbox QR authorization. Credits never expire.
           </p>
         </section>
 

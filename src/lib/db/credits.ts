@@ -1,4 +1,4 @@
-import { PutCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, GetCommand, UpdateCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, TABLES } from '../dynamodb';
 import type { CreditBalance } from '@/types/payment';
 import { v4 as uuid } from 'uuid';
@@ -31,27 +31,65 @@ export async function getCreditBalance(userId: string): Promise<CreditBalance> {
 
 export async function addCredits(userId: string, amount: number, stripeSessionId: string): Promise<CreditBalance> {
   const now = new Date().toISOString();
+  const userKey = `USER#${userId}`;
 
-  await docClient.send(new UpdateCommand({
-    TableName: TABLES.credits,
-    Key: { PK: `USER#${userId}`, SK: 'CREDITS' },
-    UpdateExpression: 'SET balance = balance + :amount, totalPurchased = totalPurchased + :amount, lastUpdated = :now',
-    ExpressionAttributeValues: { ':amount': amount, ':now': now },
-  }));
-
-  // Log transaction
-  await docClient.send(new PutCommand({
-    TableName: TABLES.creditTransactions,
-    Item: {
-      PK: `USER#${userId}`,
-      SK: `CRTX#${now}#${uuid()}`,
-      type: 'purchase',
-      amount,
-      operation: 'credit_purchase',
-      stripeSessionId,
-      timestamp: now,
-    },
-  }));
+  try {
+    await docClient.send(new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: TABLES.creditTransactions,
+            Item: {
+              PK: userKey,
+              SK: `STRIPE#${stripeSessionId}`,
+              type: 'purchase_marker',
+              amount,
+              operation: 'credit_purchase',
+              stripeSessionId,
+              timestamp: now,
+            },
+            ConditionExpression: 'attribute_not_exists(PK)',
+          },
+        },
+        {
+          Update: {
+            TableName: TABLES.credits,
+            Key: { PK: userKey, SK: 'CREDITS' },
+            UpdateExpression: 'SET userId = :userId, balance = if_not_exists(balance, :zero) + :amount, totalPurchased = if_not_exists(totalPurchased, :zero) + :amount, totalUsed = if_not_exists(totalUsed, :zero), lastUpdated = :now',
+            ExpressionAttributeValues: {
+              ':userId': userId,
+              ':zero': 0,
+              ':amount': amount,
+              ':now': now,
+            },
+          },
+        },
+        {
+          Put: {
+            TableName: TABLES.creditTransactions,
+            Item: {
+              PK: userKey,
+              SK: `CRTX#${now}#${uuid()}`,
+              type: 'purchase',
+              amount,
+              operation: 'credit_purchase',
+              stripeSessionId,
+              timestamp: now,
+            },
+          },
+        },
+      ],
+    }));
+  } catch (error: any) {
+    if (error?.name === 'TransactionCanceledException') {
+      const existing = await docClient.send(new GetCommand({
+        TableName: TABLES.creditTransactions,
+        Key: { PK: userKey, SK: `STRIPE#${stripeSessionId}` },
+      }));
+      if (existing.Item) return getCreditBalance(userId);
+    }
+    throw error;
+  }
 
   return getCreditBalance(userId);
 }
