@@ -5,13 +5,15 @@ import { ChatBedrockConverse } from '@langchain/aws';
  *
  * When USE_VERCEL_AI_GATEWAY=true:
  *   Uses Vercel AI Gateway (dynamic import of @langchain/openai)
+ *   Base URL: https://ai-gateway.vercel.sh/v1
  *
  * When USE_VERCEL_AI_GATEWAY=false (default):
  *   Uses AWS Bedrock directly
  */
 
 function useGateway(): boolean {
-  return process.env.USE_VERCEL_AI_GATEWAY === 'true';
+  const val = process.env.USE_VERCEL_AI_GATEWAY;
+  return val === 'true' || val === '1';
 }
 
 /**
@@ -19,13 +21,12 @@ function useGateway(): boolean {
  */
 export function createPrimaryLLM(): any {
   if (useGateway()) {
-    // Dynamic require to avoid OPENAI_API_KEY check at import time
     const { ChatOpenAI } = require('@langchain/openai');
     return new ChatOpenAI({
       modelName: process.env.AI_PRIMARY_MODEL || 'anthropic/claude-sonnet-4-20250514',
       openAIApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
       configuration: {
-        baseURL: 'https://gateway.vercel.ai/v1',
+        baseURL: 'https://ai-gateway.vercel.sh/v1',
       },
       temperature: 0.3,
       maxTokens: 4096,
@@ -54,7 +55,7 @@ export function createFastLLM(): any {
       modelName: process.env.AI_FAST_MODEL || 'anthropic/claude-3-haiku-20240307',
       openAIApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
       configuration: {
-        baseURL: 'https://gateway.vercel.ai/v1',
+        baseURL: 'https://ai-gateway.vercel.sh/v1',
       },
       temperature: 0.2,
       maxTokens: 2048,
