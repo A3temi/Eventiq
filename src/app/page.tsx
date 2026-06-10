@@ -51,6 +51,10 @@ export default function Home() {
   // Adapted view models for every event (summary + cached details).
   const events = useAllEventModels();
   const activeEvent = useEventModel(activeEventId);
+  const openVendor = useMemo(
+    () => activeEvent?.vendors.find((v) => v.id === openVendorId) ?? null,
+    [activeEvent, openVendorId],
+  );
 
   // theme bootstrap
   useEffect(() => {
@@ -90,11 +94,6 @@ export default function Home() {
     if (activeEventId && !whiteboardVisible) startPolling(activeEventId);
     return () => stopPolling();
   }, [activeEventId, whiteboardVisible, startPolling, stopPolling]);
-
-  const openVendor = useMemo(
-    () => activeEvent?.vendors.find((v) => v.id === openVendorId) ?? null,
-    [activeEvent, openVendorId],
-  );
 
   // All hooks above must run before any conditional return. The deployed React
   // #310 crash was caused by returning for auth/loading before useMemo ran.
