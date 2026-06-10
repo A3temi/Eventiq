@@ -1,18 +1,13 @@
 import { ChatBedrockConverse } from '@langchain/aws';
-import { ChatOpenAI } from '@langchain/openai';
 
 /**
  * LLM Factory — creates the right model client based on env config.
  *
  * When USE_VERCEL_AI_GATEWAY=true:
- *   Uses Vercel AI Gateway (ChatOpenAI with custom baseURL)
- *   - Unified billing, observability, caching, model fallback
- *   - Supports all models via gateway routing
+ *   Uses Vercel AI Gateway (dynamic import of @langchain/openai)
  *
  * When USE_VERCEL_AI_GATEWAY=false (default):
  *   Uses AWS Bedrock directly
- *   - Claude Sonnet for orchestrator
- *   - Claude Haiku for sub-agents
  */
 
 function useGateway(): boolean {
@@ -21,10 +16,11 @@ function useGateway(): boolean {
 
 /**
  * Create the primary/orchestrator model (Claude Sonnet).
- * Use for complex reasoning, planning, delegation decisions.
  */
-export function createPrimaryLLM() {
+export function createPrimaryLLM(): any {
   if (useGateway()) {
+    // Dynamic require to avoid OPENAI_API_KEY check at import time
+    const { ChatOpenAI } = require('@langchain/openai');
     return new ChatOpenAI({
       modelName: process.env.AI_PRIMARY_MODEL || 'anthropic/claude-sonnet-4-20250514',
       openAIApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
@@ -50,10 +46,10 @@ export function createPrimaryLLM() {
 
 /**
  * Create the fast/cheap model (Claude Haiku).
- * Use for sub-agents that loop frequently.
  */
-export function createFastLLM() {
+export function createFastLLM(): any {
   if (useGateway()) {
+    const { ChatOpenAI } = require('@langchain/openai');
     return new ChatOpenAI({
       modelName: process.env.AI_FAST_MODEL || 'anthropic/claude-3-haiku-20240307',
       openAIApiKey: process.env.VERCEL_AI_GATEWAY_API_KEY!,
