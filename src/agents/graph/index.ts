@@ -3,58 +3,53 @@ import { HumanMessage, AIMessage } from '@langchain/core/messages';
 import { AgentState } from './state';
 import {
   orchestratorNode,
-  venueAgentNode,
-  vendorAgentNode,
-  foodAgentNode,
-  communicationAgentNode,
-  scheduleAgentNode,
-  analyticsAgentNode,
   orchestratorToolNode,
-  venueToolNode,
-  vendorToolNode,
-  foodToolNode,
-  communicationToolNode,
-  scheduleToolNode,
-  analyticsToolNode,
   trackToolsNode,
   orchestratorRouter,
-  subAgentRouter,
 } from './nodes';
 
 /**
- * Multi-Agent LangGraph Workflow
+ * Multi-Agent LangGraph Workflow — TRUE Delegation Architecture
  *
- * Architecture:
- * ┌─────────────────────────────────────────────────────────────┐
- * │  ORCHESTRATOR (Claude Sonnet)                                │
- * │  - Interprets user intent                                    │
- * │  - Calls tools directly (search, send, schedule, etc.)       │
- * │  - Loops: orchestrator → tools → track → orchestrator        │
- * │  - Produces final response when no more tool calls needed    │
- * └─────────────────────────────────────────────────────────────┘
+ * ┌─────────────────────────────────────────────────────────────────────┐
+ * │  ORCHESTRATOR (Claude Sonnet)                                        │
+ * │  - Interprets user intent                                            │
+ * │  - DELEGATES to specialized agents via delegate_to_agent tool        │
+ * │  - Does NOT search/send directly                                     │
+ * │  - Composes final response from agent results                        │
+ * └──────────────────────────┬──────────────────────────────────────────┘
+ *                            │ delegate_to_agent(agent, task)
+ *                            ▼
+ * ┌─────────────────────────────────────────────────────────────────────┐
+ * │  SUB-AGENTS (Claude Haiku) — each runs AUTONOMOUSLY                  │
+ * │                                                                       │
+ * │  ┌──────────┐ ┌───────────────┐ ┌───────┐ ┌────────┐               │
+ * │  │Researcher│ │Communication  │ │ Venue │ │ Vendor │               │
+ * │  │(Exa web) │ │(WhatsApp+Email│ │search │ │caterers│               │
+ * │  └──────────┘ └───────────────┘ └───────┘ └────────┘               │
+ * │  ┌──────────┐ ┌───────────────┐ ┌──────────┐                       │
+ * │  │ Schedule │ │  Analytics    │ │ Attendee │                       │
+ * │  │(timeline)│ │  (budget)     │ │ (RSVPs)  │                       │
+ * │  └──────────┘ └───────────────┘ └──────────┘                       │
+ * └─────────────────────────────────────────────────────────────────────┘
  *
- * Sub-agents (Venue, Vendor, Food, Communication, Schedule, Analytics)
- * are available as independent entry points — each with:
- * - Specialized system prompt
- * - Domain-specific tools only
- * - Claude Haiku (fast/cheap)
- * - Their own tool loop
- *
- * Current flow: Orchestrator handles everything via tool loop.
- * The sub-agents can be invoked directly via runSubAgent() for
- * explicit delegation or parallel execution.
+ * Each sub-agent has its own LangGraph with:
+ * - Own system prompt optimized for its domain
+ * - Own tools (search, send, calculate, etc.)
+ * - Own agent loop (calls tools repeatedly until goal is reached)
+ * - Uses Claude Haiku (cheap, fast, can loop many times)
  */
 function buildGraph() {
   const graph = new StateGraph(AgentState)
-    // ── Orchestrator + tool loop ──
+    // ── Orchestrator + delegation loop ──
     .addNode('orchestrator', orchestratorNode)
     .addNode('orchestrator_tools', orchestratorToolNode)
     .addNode('orchestrator_track', trackToolsNode)
 
-    // Entry
+    // Entry point
     .addEdge('__start__', 'orchestrator')
 
-    // Orchestrator loop: call tools or end
+    // Orchestrator loop: delegate to agents or end
     .addConditionalEdges('orchestrator', orchestratorRouter, {
       orchestrator_tools: 'orchestrator_tools',
       __end__: '__end__',
@@ -62,39 +57,15 @@ function buildGraph() {
     .addEdge('orchestrator_tools', 'orchestrator_track')
     .addEdge('orchestrator_track', 'orchestrator');
 
-  return graph.compile(); // LangGraph loops orchestrator → tools until no more tool calls
-}
-
-/**
- * Build a standalone sub-agent graph for direct invocation.
- * Each sub-agent has its own isolated tool loop.
- */
-function buildSubAgentGraph(
-  agentNode: (state: AgentStateType) => Promise<any>,
-  toolNode: any
-) {
-  const graph = new StateGraph(AgentState)
-    .addNode('agent', agentNode)
-    .addNode('tools', toolNode)
-    .addNode('track', trackToolsNode)
-    .addEdge('__start__', 'agent')
-    .addConditionalEdges('agent', subAgentRouter, {
-      tools: 'tools',
-      __end__: '__end__',
-    })
-    .addEdge('tools', 'track')
-    .addEdge('track', 'agent');
-
   return graph.compile();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Compiled graphs (singletons)
+// Compiled graph (singleton)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 type AgentStateType = typeof AgentState.State;
 
-// Singleton — compiled once per server lifecycle
 let compiledGraph: ReturnType<typeof buildGraph> | null = null;
 
 function getMainGraph() {
@@ -104,44 +75,14 @@ function getMainGraph() {
   return compiledGraph;
 }
 
-// Sub-agent graphs — compiled on first use
-const subGraphs: Record<string, ReturnType<typeof buildSubAgentGraph>> = {};
-
-function getSubGraph(agent: string) {
-  if (!subGraphs[agent]) {
-    switch (agent) {
-      case 'venue':
-        subGraphs[agent] = buildSubAgentGraph(venueAgentNode, venueToolNode);
-        break;
-      case 'vendor':
-        subGraphs[agent] = buildSubAgentGraph(vendorAgentNode, vendorToolNode);
-        break;
-      case 'food':
-        subGraphs[agent] = buildSubAgentGraph(foodAgentNode, foodToolNode);
-        break;
-      case 'communication':
-        subGraphs[agent] = buildSubAgentGraph(communicationAgentNode, communicationToolNode);
-        break;
-      case 'schedule':
-        subGraphs[agent] = buildSubAgentGraph(scheduleAgentNode, scheduleToolNode);
-        break;
-      case 'analytics':
-        subGraphs[agent] = buildSubAgentGraph(analyticsAgentNode, analyticsToolNode);
-        break;
-      default:
-        throw new Error(`Unknown sub-agent: ${agent}`);
-    }
-  }
-  return subGraphs[agent];
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Run the main orchestrator graph.
- * The orchestrator (Claude Sonnet) handles intent + tool execution in a loop.
+ * Run the orchestrator graph.
+ * The orchestrator (Claude Sonnet) delegates to autonomous sub-agents.
+ * Each sub-agent runs its own LangGraph loop with its own tools.
  */
 export async function runAgentGraph(
   userMessage: string,
@@ -163,8 +104,8 @@ export async function runAgentGraph(
     toolsUsed: [],
   });
 
-  // Extract final response
-  const aiMessages = result.messages.filter((m: any) => {
+  // Extract final response from the orchestrator
+  const aiMessages = (result.messages as Array<{ _getType?: () => string; content: unknown; tool_calls?: unknown[] }>).filter((m) => {
     const type = m._getType?.();
     return type === 'ai';
   });
@@ -173,17 +114,16 @@ export async function runAgentGraph(
   for (let i = aiMessages.length - 1; i >= 0; i--) {
     const content = aiMessages[i].content;
     if (typeof content === 'string' && content.trim().length > 0) {
-      // Skip messages that are only tool calls with no text
-      const hasToolCalls = 'tool_calls' in aiMessages[i] &&
-        Array.isArray((aiMessages[i] as any).tool_calls) &&
-        (aiMessages[i] as any).tool_calls.length > 0;
+      // Skip messages that are only tool calls with no meaningful text
+      const hasToolCalls = Array.isArray(aiMessages[i].tool_calls) &&
+        aiMessages[i].tool_calls!.length > 0;
       if (hasToolCalls && content.trim().length < 5) continue;
       response = content;
       break;
     } else if (Array.isArray(content)) {
-      const textBlocks = content.filter((b: any) => b.type === 'text');
+      const textBlocks = (content as Array<{ type: string; text?: string }>).filter((b) => b.type === 'text');
       if (textBlocks.length > 0) {
-        response = textBlocks.map((b: any) => b.text).join('\n');
+        response = textBlocks.map((b) => b.text || '').join('\n');
         break;
       }
     }
@@ -191,38 +131,66 @@ export async function runAgentGraph(
 
   return {
     response,
-    toolsUsed: result.toolsUsed || [],
+    toolsUsed: (result.toolsUsed as string[]) || [],
   };
 }
 
 /**
- * Run a specific sub-agent directly (for explicit delegation).
- * The sub-agent gets a clean context — just the user request.
+ * Run a specific sub-agent directly (for programmatic access).
+ * Useful for testing or direct invocation outside the orchestrator.
  */
 export async function runSubAgent(
-  agent: 'venue' | 'vendor' | 'food' | 'communication' | 'schedule' | 'analytics',
-  userMessage: string
-): Promise<{ response: string; toolsUsed: string[] }> {
-  const graph = getSubGraph(agent);
+  agent: 'researcher' | 'communication' | 'venue' | 'vendor' | 'schedule' | 'analytics' | 'attendee' | 'whiteboard',
+  task: string
+): Promise<{ response: string }> {
+  // Dynamic import to avoid circular dependencies
+  let run: (task: string) => Promise<string>;
 
-  const result = await graph.invoke({
-    messages: [new HumanMessage(userMessage)],
-    toolsUsed: [],
-  });
-
-  const aiMessages = result.messages.filter((m: any) => m._getType?.() === 'ai');
-  let response = 'Sub-agent completed with no text response.';
-
-  for (let i = aiMessages.length - 1; i >= 0; i--) {
-    const content = aiMessages[i].content;
-    if (typeof content === 'string' && content.trim().length > 0) {
-      response = content;
+  switch (agent) {
+    case 'researcher': {
+      const mod = await import('@/agents/researcher');
+      run = mod.run;
       break;
     }
+    case 'communication': {
+      const mod = await import('@/agents/communication');
+      run = mod.run;
+      break;
+    }
+    case 'venue': {
+      const mod = await import('@/agents/venue');
+      run = mod.run;
+      break;
+    }
+    case 'vendor': {
+      const mod = await import('@/agents/vendor');
+      run = mod.run;
+      break;
+    }
+    case 'schedule': {
+      const mod = await import('@/agents/schedule');
+      run = mod.run;
+      break;
+    }
+    case 'analytics': {
+      const mod = await import('@/agents/analytics');
+      run = mod.run;
+      break;
+    }
+    case 'attendee': {
+      const mod = await import('@/agents/attendee');
+      run = mod.run;
+      break;
+    }
+    case 'whiteboard': {
+      const mod = await import('@/agents/whiteboard');
+      run = mod.run;
+      break;
+    }
+    default:
+      throw new Error(`Unknown sub-agent: ${agent}`);
   }
 
-  return {
-    response,
-    toolsUsed: result.toolsUsed || [],
-  };
+  const response = await run(task);
+  return { response };
 }

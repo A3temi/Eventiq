@@ -3,7 +3,6 @@
 import { EventSidebar } from '@/components/sidebar/EventSidebar';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { WhiteboardView } from '@/components/whiteboard/WhiteboardView';
-import { WhiteboardInput } from '@/components/whiteboard/WhiteboardInput';
 import { ModeToggle } from '@/components/layout/ModeToggle';
 import { CreditsDisplay } from '@/components/layout/CreditsDisplay';
 import { useAppStore } from '@/stores/app-store';

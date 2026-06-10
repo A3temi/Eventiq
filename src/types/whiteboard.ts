@@ -1,12 +1,17 @@
-import type { Node, Viewport } from 'reactflow';
-
-export interface WhiteboardState {
-  eventId: string;
-  nodes: WhiteboardNode[];
-  edges: WhiteboardEdge[];
-  viewport: Viewport;
+export interface WhiteboardConfig {
+  sections: WhiteboardSection[];
 }
 
+export interface WhiteboardSection {
+  id: string;
+  type: 'date' | 'venue' | 'catering' | 'schedule' | 'contacts' | 'budget' | 'topics' | 'custom';
+  title: string;
+  status: 'confirmed' | 'discussing' | 'pending';
+  content: Record<string, any>;
+  order: number;
+}
+
+// Legacy types kept for backwards compatibility
 export type WhiteboardNodeType =
   | 'schedule-block'
   | 'vendor-card'
@@ -16,13 +21,6 @@ export type WhiteboardNodeType =
   | 'task-card'
   | 'communication-log'
   | 'analytics-widget';
-
-export interface WhiteboardNode extends Node {
-  id: string;
-  type: WhiteboardNodeType;
-  position: { x: number; y: number };
-  data: WhiteboardNodeData;
-}
 
 export interface WhiteboardNodeData {
   title: string;
@@ -35,16 +33,6 @@ export interface WhiteboardNodeData {
   expandable: boolean;
   discussionHistory?: DiscussionEntry[];
   lastUpdated: string;
-}
-
-export interface WhiteboardEdge {
-  id: string;
-  source: string;
-  target: string;
-  from: string;
-  to: string;
-  label?: string;
-  animated?: boolean;
 }
 
 export interface DiscussionEntry {

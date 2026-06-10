@@ -1,11 +1,13 @@
 export interface EventDetails {
   confirmedDate?: string;
   confirmedTime?: string;
-  confirmedVenue?: { name: string; url?: string; price?: string };
-  confirmedCatering?: { name: string; url?: string; price?: string };
-  schedule?: Array<{ time: string; title: string; speaker?: string }>;
-  contacts?: Array<{ name?: string; phone?: string; email?: string }>;
+  confirmedVenue?: { name: string; url?: string; price?: string; status?: 'confirmed' | 'discussing' | 'pending' };
+  confirmedCatering?: { name: string; url?: string; price?: string; status?: 'confirmed' | 'discussing' | 'pending' };
+  schedule?: Array<{ time: string; title: string; speaker?: string; status?: 'confirmed' | 'discussing' | 'pending' }>;
+  contacts?: Array<{ name?: string; phone?: string; email?: string; status?: 'confirmed' | 'pending' | 'messaging' }>;
   topics?: string[];
+  budget?: { total?: number; committed?: number; items?: Array<{ name: string; amount: number; status: string }> };
+  visibleSections?: string[];
 }
 
 export interface EventBrief {
