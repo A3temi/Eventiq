@@ -1,9 +1,10 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, Mail, MessageCircle, Save, Sparkles } from 'lucide-react';
+import { useState, useEffect, Suspense } from 'react';
+import { ArrowLeft, CreditCard, Mail, MessageCircle, Save, Sparkles, Check, Zap } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 interface UserSettings {
   customEmail: string;
@@ -12,8 +13,24 @@ interface UserSettings {
   useCustomWhatsApp: boolean;
 }
 
+const CREDIT_TIERS = [
+  { tier: '5', price: '$5', credits: '500', perDollar: '100/$ ', popular: false },
+  { tier: '10', price: '$10', credits: '1,100', perDollar: '110/$', popular: true },
+  { tier: '20', price: '$20', credits: '2,500', perDollar: '125/$', popular: false },
+  { tier: '50', price: '$50', credits: '7,000', perDollar: '140/$', popular: false },
+];
+
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const [credits, setCredits] = useState<number | null>(null);
   const [settings, setSettings] = useState<UserSettings>({
     customEmail: '',
@@ -23,6 +40,8 @@ export default function SettingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const justPurchased = searchParams.get('purchased') === 'true';
 
   useEffect(() => {
     if (session?.user?.email) {
@@ -55,6 +74,23 @@ export default function SettingsPage() {
     }
   };
 
+  const handlePurchase = async (tier: string) => {
+    setPurchasing(tier);
+    try {
+      const res = await fetch('/api/credits/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } finally {
+      setPurchasing(null);
+    }
+  };
+
   if (!session) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -73,6 +109,14 @@ export default function SettingsPage() {
           </Link>
           <h1 className="text-2xl font-semibold">Settings</h1>
         </div>
+
+        {/* Success Banner */}
+        {justPurchased && (
+          <div className="mb-6 p-4 rounded-xl bg-status-success/10 border border-status-success/20 flex items-center gap-3">
+            <Check className="w-5 h-5 text-status-success" />
+            <span className="text-sm font-medium">Credits added to your account!</span>
+          </div>
+        )}
 
         {/* Profile Section */}
         <section className="mb-8 p-5 border rounded-xl bg-card">
@@ -93,16 +137,53 @@ export default function SettingsPage() {
 
         {/* Credits Section */}
         <section id="credits" className="mb-8 p-5 border rounded-xl bg-card">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-4">
             <Sparkles className="w-5 h-5 text-primary" />
             <h2 className="font-medium text-lg">Credits</h2>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold">{credits ?? '...'}</span>
-            <span className="text-muted-foreground">credits remaining</span>
+          <div className="flex items-baseline gap-2 mb-2">
+            <span className="text-4xl font-bold">{credits ?? '...'}</span>
+            <span className="text-muted-foreground text-sm">credits remaining</span>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            New accounts start with 1,000 free credits. Each AI operation costs 1–5 credits.
+          <p className="text-xs text-muted-foreground mb-6">
+            Each AI operation costs 1–5 credits. New accounts start with 1,000 free credits.
+          </p>
+
+          {/* Purchase Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            {CREDIT_TIERS.map((plan) => (
+              <button
+                key={plan.tier}
+                onClick={() => handlePurchase(plan.tier)}
+                disabled={purchasing !== null}
+                className={`relative p-4 rounded-xl border-2 text-left transition-all hover:border-primary/50 hover:shadow-sm ${
+                  plan.popular ? 'border-primary/30 bg-primary/5' : 'border-border'
+                } ${purchasing === plan.tier ? 'opacity-70' : ''}`}
+              >
+                {plan.popular && (
+                  <span className="absolute -top-2.5 left-3 px-2 py-0.5 bg-primary text-primary-foreground text-[10px] font-medium rounded-full">
+                    POPULAR
+                  </span>
+                )}
+                <div className="text-2xl font-bold">{plan.price}</div>
+                <div className="text-sm font-medium mt-1 flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-primary" />
+                  {plan.credits} credits
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {plan.perDollar}
+                </div>
+                {purchasing === plan.tier && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-xl">
+                    <span className="text-xs">Redirecting...</span>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <p className="text-[11px] text-muted-foreground mt-3 text-center">
+            Payments processed securely via Stripe. Credits never expire.
           </p>
         </section>
 
@@ -120,7 +201,7 @@ export default function SettingsPage() {
               type="checkbox"
               checked={settings.useCustomEmail}
               onChange={(e) => setSettings({ ...settings, useCustomEmail: e.target.checked })}
-              className="w-4 h-4 rounded border-border"
+              className="w-4 h-4 rounded border-border accent-primary"
             />
             <span className="text-sm">Use my own email address</span>
           </label>
@@ -149,7 +230,7 @@ export default function SettingsPage() {
               type="checkbox"
               checked={settings.useCustomWhatsApp}
               onChange={(e) => setSettings({ ...settings, useCustomWhatsApp: e.target.checked })}
-              className="w-4 h-4 rounded border-border"
+              className="w-4 h-4 rounded border-border accent-primary"
             />
             <span className="text-sm">Use my own WhatsApp number</span>
           </label>
