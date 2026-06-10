@@ -9,6 +9,9 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Eventiq — AI Event Organizer',
   description: 'AI-powered multi-agent event planning for Singapore',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
@@ -19,6 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
+        <meta name="apple-mobile-web-app-title" content="EventIQ" />
         <SessionProvider>
           {children}
           <Toaster position="top-right" richColors />

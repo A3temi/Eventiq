@@ -4,6 +4,9 @@
   "outputDirectory": ".next",
   "regions": ["iad1"],
   "functions": {
+    "src/app/api/chat/route.ts": {
+      "maxDuration": 300
+    },
     "src/app/api/**/*.ts": {
       "maxDuration": 60
     }

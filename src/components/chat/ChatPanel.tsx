@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signIn } from 'next-auth/react';
-import ReactMarkdown from 'react-markdown';
 import { useChatStore } from '@/stores/chat-store';
 import { useAppStore } from '@/stores/app-store';
 import { Send, Paperclip, Bot, User, Loader2, Lock } from 'lucide-react';
@@ -21,10 +20,36 @@ export function ChatPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { data: session, status } = useSession();
-  const { messages, isLoading, historyLoading, pendingApprovals } = useChatStore();
+  const { messages, isLoading, historyLoading, loadingStatus, pendingApprovals } = useChatStore();
   const activeEventId = useAppStore((s) => s.activeEventId);
   const fetchEvents = useAppStore((s) => s.fetchEvents);
+
+  const statusMessages = [
+    '🔍 Analyzing your request...',
+    '🧠 Orchestrator is deciding which agents to use...',
+    '📡 Delegating to specialized agents...',
+    '🔎 Agents are researching...',
+    '✍️ Composing response...',
+  ];
+
+  const startStatusCycling = useCallback(() => {
+    let index = 0;
+    useChatStore.getState().setLoadingStatus(statusMessages[0]);
+    statusIntervalRef.current = setInterval(() => {
+      index = (index + 1) % statusMessages.length;
+      useChatStore.getState().setLoadingStatus(statusMessages[index]);
+    }, 4000);
+  }, []);
+
+  const stopStatusCycling = useCallback(() => {
+    if (statusIntervalRef.current) {
+      clearInterval(statusIntervalRef.current);
+      statusIntervalRef.current = null;
+    }
+    useChatStore.getState().setLoadingStatus('');
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -63,6 +88,7 @@ export function ChatPanel() {
     useChatStore.getState().addMessage(userMessage);
     setInput('');
     useChatStore.getState().setLoading(true);
+    startStatusCycling();
 
     try {
       const response = await fetch('/api/chat', {
@@ -102,6 +128,7 @@ export function ChatPanel() {
         timestamp: new Date().toISOString(),
       });
     } finally {
+      stopStatusCycling();
       useChatStore.getState().setLoading(false);
     }
   };
@@ -154,6 +181,7 @@ export function ChatPanel() {
 
     useChatStore.getState().addMessage(userMessage);
     useChatStore.getState().setLoading(true);
+    startStatusCycling();
     setInput('');
 
     try {
@@ -193,6 +221,7 @@ export function ChatPanel() {
         timestamp: new Date().toISOString(),
       });
     } finally {
+      stopStatusCycling();
       useChatStore.getState().setLoading(false);
     }
   };
@@ -217,9 +246,7 @@ export function ChatPanel() {
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-              <Bot className="w-8 h-8 text-primary" />
-            </div>
+            <img src="/logo-icon.svg" alt="Eventiq" className="w-16 h-16 mb-4" />
             <h2 className="text-xl font-semibold">Eventiq</h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-md">
               Describe your event and I&apos;ll handle venues, vendors,
@@ -247,7 +274,7 @@ export function ChatPanel() {
                 'w-8 h-8 rounded-full flex items-center justify-center shrink-0',
                 msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
               )}>
-                {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                {msg.role === 'user' ? <User className="w-4 h-4" /> : <img src="/logo-icon.svg" alt="" className="w-5 h-5" />}
               </div>
               <div className={cn(
                 'relative rounded-xl p-3 max-w-prose',
@@ -265,9 +292,11 @@ export function ChatPanel() {
                     )}
                   </div>
                 )}
-                <div className="text-sm prose prose-sm prose-neutral max-w-none dark:prose-invert [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>li]:my-0.5 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&_a]:text-primary [&_a]:underline">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
-                </div>
+                {msg.role === 'user' ? (
+                  <p className="text-sm whitespace-pre-wrap text-primary-foreground">{msg.content}</p>
+                ) : (
+                  <MarkdownMessage content={msg.content} />
+                )}
 
                 {/* Thinking trace */}
                 {msg.metadata?.thinking && msg.metadata.thinking.length > 0 && (
@@ -308,11 +337,11 @@ export function ChatPanel() {
 
         {isLoading && (
           <div className="flex gap-3">
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-              <Loader2 className="w-4 h-4 animate-spin" />
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
             </div>
             <div className="bg-muted rounded-xl p-3">
-              <p className="text-sm text-muted-foreground">Thinking...</p>
+              <p className="text-sm text-muted-foreground">{loadingStatus || 'Thinking...'}</p>
             </div>
           </div>
         )}

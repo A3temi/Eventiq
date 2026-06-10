@@ -69,10 +69,7 @@ export function EventSidebar() {
       <div className="p-4 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground text-xs font-bold">E</span>
-            </div>
-            <h1 className="font-semibold text-lg">Eventiq</h1>
+            <img src="/logo-wide.svg" alt="Eventiq" className="h-7" />
           </div>
           <button
             onClick={handleNewEvent}

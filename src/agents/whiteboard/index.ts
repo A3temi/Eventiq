@@ -349,7 +349,7 @@ function createHaiku() {
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
     temperature: 0.1,
-    maxTokens: 4096,
+    maxTokens: 2048,
   }).bindTools(tools);
 }
 

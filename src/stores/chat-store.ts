@@ -5,11 +5,13 @@ interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
   historyLoading: boolean;
+  loadingStatus: string;
   pendingApprovals: ApprovalRequest[];
 
   addMessage: (message: ChatMessage) => void;
   setMessages: (messages: ChatMessage[]) => void;
   setLoading: (loading: boolean) => void;
+  setLoadingStatus: (status: string) => void;
   addApproval: (approval: ApprovalRequest) => void;
   updateApproval: (id: string, status: ApprovalRequest['status']) => void;
   clearMessages: () => void;
@@ -20,6 +22,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   isLoading: false,
   historyLoading: false,
+  loadingStatus: '',
   pendingApprovals: [],
 
   addMessage: (message) =>
@@ -28,6 +31,8 @@ export const useChatStore = create<ChatState>((set) => ({
   setMessages: (messages) => set({ messages }),
 
   setLoading: (isLoading) => set({ isLoading }),
+
+  setLoadingStatus: (loadingStatus) => set({ loadingStatus }),
 
   addApproval: (approval) =>
     set((state) => ({

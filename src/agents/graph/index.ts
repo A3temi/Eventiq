@@ -83,6 +83,8 @@ function getMainGraph() {
  * Run the orchestrator graph.
  * The orchestrator (Claude Sonnet) delegates to autonomous sub-agents.
  * Each sub-agent runs its own LangGraph loop with its own tools.
+ *
+ * Includes a 50s timeout to stay within Vercel's 60s function limit.
  */
 export async function runAgentGraph(
   userMessage: string,
@@ -99,10 +101,27 @@ export async function runAgentGraph(
     new HumanMessage(userMessage),
   ];
 
-  const result = await graph.invoke({
-    messages,
-    toolsUsed: [],
-  });
+  // Race the graph invocation against a 50s timeout to avoid 504s on Vercel free tier
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('TIMEOUT')), 50000)
+  );
+
+  let result: AgentStateType;
+  try {
+    result = await Promise.race([
+      graph.invoke({ messages, toolsUsed: [] }),
+      timeout,
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'TIMEOUT') {
+      return {
+        response:
+          "I'm still working on this — the research is taking longer than expected. Could you try a more specific question, or ask me to continue?",
+        toolsUsed: ['timeout'],
+      };
+    }
+    throw error;
+  }
 
   // Extract final response from the orchestrator
   const aiMessages = (result.messages as Array<{ _getType?: () => string; content: unknown; tool_calls?: unknown[] }>).filter((m) => {
