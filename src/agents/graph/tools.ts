@@ -105,8 +105,21 @@ export const getCurrentDateTimeTool = new DynamicStructuredTool({
 });
 
 // Tool sets per agent
+export const saveEventDetailsTool = new DynamicStructuredTool({
+  name: 'save_event_details',
+  description: 'Save a confirmed event detail (date, time, venue, catering, schedule item, contact, or topic). Call this when the user confirms a decision.',
+  schema: z.object({
+    field: z.string().describe('The field to save: confirmedDate, confirmedTime, confirmedVenue, confirmedCatering, schedule, contacts, topics'),
+    value: z.string().describe('JSON string of the value to save (e.g. {"name":"Venue X","url":"...","price":"$500"} for venue)'),
+  }),
+  func: async ({ field, value }) => {
+    // The orchestrator handles persistence via updateEvent
+    return JSON.stringify({ saved: true, field, value });
+  },
+});
+
 export const orchestratorTools = [getCurrentDateTimeTool];
 export const venueTools = [searchVenuesTool];
 export const vendorTools = [searchVendorsTool];
 export const communicationTools = [sendWhatsAppTool, sendEmailTool];
-export const allTools = [searchVenuesTool, searchVendorsTool, sendWhatsAppTool, sendEmailTool, getCurrentDateTimeTool];
+export const allTools = [searchVenuesTool, searchVendorsTool, sendWhatsAppTool, sendEmailTool, getCurrentDateTimeTool, saveEventDetailsTool];

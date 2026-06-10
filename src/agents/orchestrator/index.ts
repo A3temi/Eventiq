@@ -2,7 +2,7 @@ import { runAgentGraph } from '@/agents/graph';
 import { createEvent, getEvent, updateEvent } from '@/lib/db/events';
 import { createMessage, getRecentMessages } from '@/lib/db/conversations';
 import { getCreditBalance, deductCredits } from '@/lib/db/credits';
-import type { EventBrief } from '@/types/event';
+import type { EventBrief, EventDetails } from '@/types/event';
 import type { OptionCard, ThinkingStep } from '@/types/chat';
 
 interface OrchestrateInput {
@@ -72,6 +72,39 @@ function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
     if (priceMatch && currentOption) {
       currentOption.price = priceMatch[0];
     }
+
+    // Match location / address patterns (Singapore-specific)
+    if (currentOption) {
+      const locationMatch = line.match(
+        /(?:(?:at|located?\s+at|address:?|📍)\s*)(.+(?:Singapore|Road|Street|Avenue|Drive|Blvd|Lane|Tanjong Pagar|Orchard|Marina|Raffles|Bugis|Clarke Quay|Sentosa|Jurong|Novena|Tampines|Changi|Bishan)[^.\n]*)/i
+      );
+      if (locationMatch && !currentOption.location) {
+        currentOption.location = locationMatch[1].replace(/[*_`]/g, '').trim();
+      }
+      // Also match standalone Singapore address patterns
+      const sgAddressMatch = line.match(
+        /(\d+\s+[\w\s]+(?:Road|Street|Avenue|Drive|Lane|Blvd)[\w\s,#\-]*(?:Singapore\s*\d{6})?)/i
+      );
+      if (sgAddressMatch && !currentOption.location) {
+        currentOption.location = sgAddressMatch[1].trim();
+      }
+    }
+
+    // Detect category from context
+    if (currentOption && !currentOption.category) {
+      const lowerLine = line.toLowerCase();
+      if (lowerLine.includes('cater') || lowerLine.includes('food') || lowerLine.includes('menu')) {
+        currentOption.category = 'catering';
+      } else if (lowerLine.includes('venue') || lowerLine.includes('hall') || lowerLine.includes('ballroom')) {
+        currentOption.category = 'venue';
+      } else if (lowerLine.includes('photo') || lowerLine.includes('videograph')) {
+        currentOption.category = 'photography';
+      } else if (lowerLine.includes('music') || lowerLine.includes('dj') || lowerLine.includes('band')) {
+        currentOption.category = 'music';
+      } else if (lowerLine.includes('décor') || lowerLine.includes('decor') || lowerLine.includes('flower') || lowerLine.includes('floral')) {
+        currentOption.category = 'decoration';
+      }
+    }
   }
 
   if (currentOption?.name) {
@@ -115,6 +148,70 @@ function buildThinkingSteps(toolsUsed: string[]): ThinkingStep[] {
 
     return step;
   });
+}
+
+/**
+ * Persist confirmed event details to DynamoDB.
+ * Parses the response for saved field/value from save_event_details tool calls.
+ */
+async function persistEventDetails(eventId: string, response: string): Promise<void> {
+  try {
+    const event = await getEvent(eventId);
+    if (!event) return;
+
+    const details: EventDetails = event.details || {};
+
+    // Look for save_event_details results in the response context
+    // The tool returns JSON like {"saved":true,"field":"confirmedVenue","value":"..."}
+    const savedPattern = /\{"saved"\s*:\s*true\s*,\s*"field"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*"([^"]*(?:\\.[^"]*)*)"\s*\}/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = savedPattern.exec(response)) !== null) {
+      const field = match[1];
+      const rawValue = match[2].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+      try {
+        const parsed = JSON.parse(rawValue);
+        switch (field) {
+          case 'confirmedDate':
+            details.confirmedDate = typeof parsed === 'string' ? parsed : String(parsed);
+            break;
+          case 'confirmedTime':
+            details.confirmedTime = typeof parsed === 'string' ? parsed : String(parsed);
+            break;
+          case 'confirmedVenue':
+            details.confirmedVenue = parsed;
+            break;
+          case 'confirmedCatering':
+            details.confirmedCatering = parsed;
+            break;
+          case 'schedule':
+            details.schedule = Array.isArray(parsed) ? parsed : [...(details.schedule || []), parsed];
+            break;
+          case 'contacts':
+            details.contacts = Array.isArray(parsed) ? parsed : [...(details.contacts || []), parsed];
+            break;
+          case 'topics':
+            details.topics = Array.isArray(parsed) ? parsed : [...(details.topics || []), parsed];
+            break;
+        }
+      } catch {
+        // Value is a plain string
+        switch (field) {
+          case 'confirmedDate':
+            details.confirmedDate = rawValue;
+            break;
+          case 'confirmedTime':
+            details.confirmedTime = rawValue;
+            break;
+        }
+      }
+    }
+
+    await updateEvent(eventId, { details });
+  } catch (error) {
+    console.error('Failed to persist event details:', error);
+  }
 }
 
 export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateResult> {
@@ -170,6 +267,11 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     // Deduct extra for tool usage
     if (toolsUsed.length > 0) {
       await deductCredits(userId, toolsUsed.length, 'tool_calls', eventId!);
+    }
+
+    // Persist event details if save_event_details was called
+    if (toolsUsed.includes('save_event_details')) {
+      await persistEventDetails(eventId!, response);
     }
 
     // Parse structured data from response

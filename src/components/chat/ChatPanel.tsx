@@ -11,6 +11,8 @@ import { ReasoningTrace } from './ReasoningTrace';
 import { ThinkingTrace } from './ThinkingTrace';
 import { OptionCardCarousel } from './OptionCard';
 import { MarkdownMessage } from './MarkdownMessage';
+import { ActionItems } from './ActionItems';
+import { MessageActions } from './MessageActions';
 import type { OptionCard } from '@/types/chat';
 
 export function ChatPanel() {
@@ -133,6 +135,24 @@ export function ChatPanel() {
     setInput('Can you search for more options? I want to see different alternatives.');
   };
 
+  const handleEditMessage = (content: string) => {
+    setInput(content);
+  };
+
+  const handleRetry = (messageIndex: number) => {
+    // Find the preceding user message
+    const precedingMessages = messages.slice(0, messageIndex);
+    const lastUserMessage = [...precedingMessages].reverse().find((m) => m.role === 'user');
+    if (lastUserMessage) {
+      setInput(lastUserMessage.content);
+      // Auto-submit retry
+      setTimeout(() => {
+        const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+        handleSubmit(fakeEvent);
+      }, 100);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Messages area */}
@@ -162,11 +182,11 @@ export function ChatPanel() {
             )}
           </div>
         ) : (
-          messages.map((msg) => (
+          messages.map((msg, msgIndex) => (
             <div
               key={msg.id}
               className={cn(
-                'flex gap-3 max-w-3xl',
+                'group relative flex gap-3 max-w-3xl',
                 msg.role === 'user' ? 'ml-auto flex-row-reverse' : ''
               )}
             >
@@ -177,7 +197,7 @@ export function ChatPanel() {
                 {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
               </div>
               <div className={cn(
-                'rounded-xl p-3 max-w-prose',
+                'relative rounded-xl p-3 max-w-prose',
                 msg.role === 'user'
                   ? 'bg-primary text-primary-foreground'
                   : msg.role === 'system'
@@ -215,6 +235,17 @@ export function ChatPanel() {
                 {msg.metadata?.approvalRequest && (
                   <ApprovalCard approval={msg.metadata.approvalRequest} />
                 )}
+
+                {/* Message actions */}
+                {msg.role !== 'system' && (
+                  <MessageActions
+                    role={msg.role}
+                    content={msg.content}
+                    messageId={msg.id}
+                    onEdit={msg.role === 'user' ? handleEditMessage : undefined}
+                    onRetry={msg.role === 'assistant' ? () => handleRetry(msgIndex) : undefined}
+                  />
+                )}
               </div>
             </div>
           ))
@@ -235,6 +266,9 @@ export function ChatPanel() {
       </div>
 
       {/* Input bar - always visible */}
+      {messages.length > 0 && (
+        <ActionItems messages={messages} onSelect={(text) => setInput(text)} />
+      )}
       <form onSubmit={handleSubmit} className="border-t p-4 bg-card">
         <div className="flex items-center gap-2 max-w-3xl mx-auto">
           <button

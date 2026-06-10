@@ -15,6 +15,8 @@ export interface OptionCard {
   price?: string;
   description: string;
   url?: string;
+  imageUrl?: string;
+  location?: string; // Address or place name for Google Maps
   score?: number;
   category?: string;
 }

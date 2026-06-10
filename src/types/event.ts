@@ -1,3 +1,13 @@
+export interface EventDetails {
+  confirmedDate?: string;
+  confirmedTime?: string;
+  confirmedVenue?: { name: string; url?: string; price?: string };
+  confirmedCatering?: { name: string; url?: string; price?: string };
+  schedule?: Array<{ time: string; title: string; speaker?: string }>;
+  contacts?: Array<{ name?: string; phone?: string; email?: string }>;
+  topics?: string[];
+}
+
 export interface EventBrief {
   id: string;
   userId: string;
@@ -15,6 +25,7 @@ export interface EventBrief {
   preferences: Record<string, unknown>;
   status: EventStatus;
   pinned?: boolean;
+  details?: EventDetails;
   createdAt: string;
   updatedAt: string;
 }

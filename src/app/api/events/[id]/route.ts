@@ -45,7 +45,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const allowedFields = ['name', 'pinned', 'status', 'date', 'attendeeCount', 'type', 'location'];
+    const allowedFields = ['name', 'pinned', 'status', 'date', 'attendeeCount', 'type', 'location', 'details'];
     const updates: Record<string, unknown> = {};
 
     for (const field of allowedFields) {
