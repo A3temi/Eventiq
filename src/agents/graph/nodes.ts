@@ -191,7 +191,7 @@ export async function vendorAgentNode(state: AgentStateType) {
 
 const FOOD_PROMPT = `You are Eventiq's Food & Catering Specialist for Singapore.
 
-Your job: find caterers, handle dietary requirements, menu planning. You have: search_catering, web_search.
+Your job: find caterers, handle dietary requirements, menu planning. You have: search_catering.
 
 SINGAPORE KNOWLEDGE:
 - Corporate buffet: $15-30/pax, Premium: $40-80/pax
@@ -200,7 +200,6 @@ SINGAPORE KNOWLEDGE:
 
 RULES:
 - Include headcount and dietary needs in search
-- Use web_search to find menus, pricing pages, or reviews — don't ask the user
 - Present options with pricing info
 - Mention dietary accommodations`;
 

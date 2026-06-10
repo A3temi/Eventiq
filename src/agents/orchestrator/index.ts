@@ -247,6 +247,8 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     // Run the LangGraph multi-agent system
     const { response, toolsUsed } = await runAgentGraph(message, history);
 
+    console.log('[Orchestrator] toolsUsed:', toolsUsed);
+
     // Deduct additional credits for tool usage
     const toolCost = toolsUsed.length;
     if (toolCost > 0) {

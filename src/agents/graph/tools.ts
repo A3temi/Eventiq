@@ -276,11 +276,11 @@ export const communicationAgentTools = [sendWhatsAppTool, sendEmailTool, webSear
 export const scheduleAgentTools = [createScheduleTool, getCurrentDateTimeTool, webSearchTool];
 export const analyticsAgentTools = [getBudgetSummaryTool, webSearchTool];
 
-// Orchestrator has ALL tools
+// Orchestrator has all tools EXCEPT search_catering (which is food-agent only)
+// This prevents the orchestrator from mis-categorizing general searches as food
 export const allTools = [
   searchVenuesTool,
   searchVendorsTool,
-  searchCateringTool,
   sendWhatsAppTool,
   sendEmailTool,
   getCurrentDateTimeTool,

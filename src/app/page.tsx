@@ -17,9 +17,14 @@ export default function Home() {
         <div className="flex items-center justify-end px-4 py-2 border-b bg-card shrink-0">
           <ModeToggle />
         </div>
-        {/* Content area */}
-        <div className="flex-1 overflow-hidden">
-          {mode === 'chat' ? <ChatPanel /> : <WhiteboardView />}
+        {/* Content area — both panels stay mounted for real-time updates */}
+        <div className="flex-1 overflow-hidden relative">
+          <div className={mode === 'chat' ? 'h-full' : 'hidden'}>
+            <ChatPanel />
+          </div>
+          <div className={mode === 'whiteboard' ? 'h-full' : 'hidden'}>
+            <WhiteboardView />
+          </div>
         </div>
       </main>
     </div>
