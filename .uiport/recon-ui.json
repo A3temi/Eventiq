@@ -1,0 +1,299 @@
+{
+ "components": [
+  {
+   "name": "Index (route shell)",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/routes/index.tsx",
+   "props": "none (TanStack file route component; Route = createFileRoute(\"/\")({ head, component: Index }))",
+   "features": [
+    "Head meta: title 'Eventiq \u2014 AI Event Planning', description, og:title, og:description",
+    "Full-viewport layout: h-screen flex, Sidebar left + main content + optional VendorDetailPanel right + FloatingAgentChat overlay",
+    "Mobile hamburger button (Menu icon, md:hidden, absolute top-3 left-3 z-20, rounded-xl border bg-background/80 backdrop-blur) opens Sidebar drawer",
+    "Theme toggle button absolute top-3 right-3 (sm:top-4 sm:right-4) z-20 showing Sun when dark / Moon when light; toggles `dark` class on documentElement and persists to localStorage key 'eventiq-theme'; bootstraps from localStorage or prefers-color-scheme on mount",
+    "Tab switching: 'events' | 'calendar' | 'billing'; switching tabs clears activeId (unless events), openVendorId, creating, eventChatOpen",
+    "Creating flow: 'New Event' renders NewEventChat full-screen replacing all tabs; onCreate prepends new event, exits creating, opens that event",
+    "Event detail view: 'Back to all events' button (ArrowLeft icon, text-xs) clears activeId and closes chat; segmented toggle (inline-flex rounded-lg border p-0.5 bg-muted/40) with 'Dashboard'/'Agent chat' pills \u2014 active pill gets bg-background shadow-sm",
+    "Dashboard mode renders OverviewTab; Agent chat mode renders EventAgentChat",
+    "No active event on 'events' tab \u2192 MyEventsPage grid",
+    "VendorDetailPanel renders (with key={openVendor.id} to remount per vendor) only when a vendor is open AND not creating",
+    "FloatingAgentChat always mounted at root, receives all events + activeEventId"
+   ],
+   "dataFields": [
+    "EventModel.id (activeId lookup, list keys)",
+    "EventModel.vendors (openVendor lookup by vendor.id)",
+    "VendorContact.id",
+    "Mutations: handleCreateFromChat(evt: EventModel) prepends to events array; handleVendorUpdate(patch: Partial<VendorContact>) spread-merges patch onto the open vendor inside the active event; handleEventUpdate(patch: Partial<EventModel>) spread-merges patch onto the active event. All three are setEvents map/spread operations on local useState \u2014 these become API calls (create event, patch vendor, patch event)."
+   ],
+   "notes": "State: events (seeded from mockEvents), activeId, tab, openVendorId, creating, dark, eventChatOpen, sidebarOpen. activeEvent/openVendor are useMemo derivations. Theme persistence in try/catch. Content area is flex-1 overflow-y-auto; main is flex min-w-0 overflow-hidden."
+  },
+  {
+   "name": "Sidebar",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/Sidebar.tsx",
+   "props": "interface SidebarProps { active: Tab; onChange: (t: Tab) => void; onNew: () => void; mobileOpen?: boolean; onMobileClose?: () => void } \u2014 Tab type imported from ./TabBar",
+   "features": [
+    "Logo image at top (logoAsset.url from eventiq-logo.svg.asset.json, h-8 w-auto, alt 'Eventiq')",
+    "Mobile close button (X icon, md:hidden) in header row",
+    "Mobile overlay backdrop (md:hidden fixed inset-0 z-30 bg-foreground/40 backdrop-blur-sm) shown when mobileOpen; clicking it calls onMobileClose",
+    "Off-canvas drawer on mobile: fixed z-40 w-[260px], slides via translate-x (-translate-x-full when closed, transition-transform duration-200); static md:w-[240px] on desktop, bg-card on mobile vs md:bg-card/40 on desktop",
+    "3 nav items: My Events (LayoutGrid), Calendar (CalendarDays), Billing (CreditCard); active item styled bg-primary-soft text-primary glow-primary; inactive hover:bg-muted/60; all items hover:translate-x-0.5 micro-shift; clicking calls onChange(id) then onMobileClose?.()",
+    "'New Event' primary button (Plus icon, rounded-xl bg-primary, hover:opacity-90 active:scale-[0.98]) calls onNew then onMobileClose?.()",
+    "Footer user card: gradient avatar (from-primary to-info) with initials 'JD', hardcoded name 'Jamie Doe' + email 'jamie@eventiq.app', non-functional Sign out button (LogOut icon)"
+   ],
+   "dataFields": [
+    "none from data model \u2014 purely navigational; consumes Tab union only"
+   ],
+   "notes": "Uses custom utilities glow-primary and bg-primary-soft. Hardcoded fake user. Nav defined as local const array."
+  },
+  {
+   "name": "TabBar (ORPHAN component; Tab type is load-bearing)",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/TabBar.tsx",
+   "props": "export type Tab = \"calendar\" | \"events\" | \"billing\"; interface TabBarProps { title: string; subtitle?: string; rightTitle?: string; dark: boolean; onToggleDark: () => void; onMenu?: () => void }",
+   "features": [
+    "Sticky translucent header (sticky top-0 z-10 bg-background/80 backdrop-blur border-b)",
+    "Optional mobile menu button (Menu icon, md:hidden) when onMenu provided",
+    "Title (text-lg sm:text-xl font-bold truncate) + optional subtitle line",
+    "Optional rightTitle: hidden sm:inline bold muted text on desktop; on mobile rendered as separate row below (sm:hidden)",
+    "Theme toggle button (Sun/Moon depending on dark prop)"
+   ],
+   "dataFields": [
+    "none \u2014 presentational only"
+   ],
+   "notes": "The TabBar component itself is never rendered anywhere (routes/index.tsx implements its own back-bar + theme toggle inline). However both routes/index.tsx and Sidebar.tsx import `type Tab` from this file, so the type export must be preserved in the port."
+  },
+  {
+   "name": "MyEventsPage",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/MyEventsPage.tsx",
+   "props": "interface Props { events: EventModel[]; onSelect: (id: string) => void; onNew: () => void }",
+   "features": [
+    "Header 'My events' with live count line: '{filtered.length} of {events.length} event(s)' (singular/plural handled)",
+    "'New event' primary button (Plus icon; label text hidden on mobile via hidden sm:inline)",
+    "Filter bar (rounded-xl border bg-card/40, stacks flex-col on mobile / md:flex-row): Filter icon label, Type multi-select Popover (shadcn Popover), date-range From/To native date inputs, and a clear-all X button shown only when any filter active",
+    "Type popover: checkbox-style buttons for all 6 EventTypes from eventTypeMeta, custom check square (bg-primary when checked, \u2713 glyph at text-[10px]), max-h-72 scroll, 'Clear selection' footer link when any selected; trigger button shows 'All types' / single label / 'N types' summary + ChevronDown",
+    "Filtering logic: type must be in selected set (events with no type are excluded when filtering), date must be within [from,to] using date-fns isWithinInterval with \u00b18640000000000000 sentinels; results sorted ascending by event date",
+    "Responsive card grid: grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4",
+    "Event card (entire card is a button \u2192 onSelect(evt.id)): h-28 cover area showing coverImage (group-hover:scale-[1.02] zoom) or gradient placeholder (from-primary/10 to-muted) with Camera icon + 'Add a picture' text; hover:border-primary/40 hover:shadow-sm on card; name turns text-primary on hover",
+    "Card meta row: Pin icon (h-3 w-3 text-primary fill-primary) when evt.pinned; status dot (1.5px round, color from eventStatusMeta.dot) + label; EventType chip (text-[10px] bg-muted) when type present",
+    "Date formatted 'EEE, MMM d, yyyy'",
+    "3-stat strip per card (Stat sub-component, rounded-lg bg-muted/50): Guests 'confirmed/count' or em-dash, Budget '\u00a3{spent/1000 toFixed(1)}k' or em-dash, Vendors count",
+    "Empty states: zero events \u2192 'No events yet. Click New event to start.'; filters exclude everything \u2192 'No events match your filters.' (col-span-full centered)"
+   ],
+   "dataFields": [
+    "EventModel.id, name, date, type, status, pinned, coverImage, attendees.count, attendees.confirmed, budget.spent, vendors.length",
+    "No mutations \u2014 read-only; callbacks onSelect/onNew bubble up"
+   ],
+   "notes": "Local Stat helper component { icon?: ReactNode; label: string; value: string }. Uses date-fns format/parseISO/isWithinInterval. Currency hardcoded to \u00a3."
+  },
+  {
+   "name": "OverviewTab",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/OverviewTab.tsx",
+   "props": "interface Props { event: EventModel; onOpenVendor: (id: string) => void; onUpdateEvent?: (patch: Partial<EventModel>) => void }",
+   "features": [
+    "Whole-tab empty state when no venue/catering/attendees/budget AND zero vendors: centered \ud83c\udfaf emoji, 'No confirmed details yet', 'Chat with the agent to start making decisions for this event.'",
+    "Cover image header (rounded-2xl h-40 sm:h-56): shows event.coverImage object-cover, else placeholder with Camera icon + 'Add a picture of your event'; hidden file input (accept image/*) + overlay button top-right (ImagePlus icon, bg-background/90 backdrop-blur) labeled 'Change photo' / 'Upload photo' \u2014 on file select runs FileReader.readAsDataURL and calls onUpdateEvent({ coverImage: dataURL }), then resets input value",
+    "DeliveryTracker stepper mounted directly under cover (receives full event)",
+    "3 KeyCards (grid-cols-1 sm:grid-cols-3): Guests 'confirmed / count' with '{count-confirmed} pending' sub; Budget '\u00a3spent.toLocaleString()' with 'of \u00a3total' sub; Catering name with 'Confirmed'/'Pending' sub; each KeyCard is card-soft with absolute 1px-high bg-primary/80 top accent bar and h-10 w-10 rounded-xl bg-primary/10 icon tile",
+    "Checklist card (card-soft, only when milestones exist): ListChecks header; per milestone an icon \u2014 CheckCircle2 text-primary (done), AlertTriangle text-destructive (overdue), Circle muted (pending); done titles get line-through + muted; date 'MMM d' on right; rows hover:bg-muted/40 (display only, not clickable)",
+    "Location + Schedule side-by-side grid (lg:grid-cols-2, only if venue or schedule exists)",
+    "Location card: MapPin header, venue.name right-aligned, address line, embedded Google Maps iframe (https://www.google.com/maps?q={encodeURIComponent(address)}&output=embed, h-80 lg:h-[28rem], loading=lazy, referrerPolicy no-referrer-when-downgrade)",
+    "Schedule card: Clock header + event date 'EEEE, MMM d'; rows in grid-cols-[64px_1fr] with mono time + title in rounded-lg border-l-4 border-primary bg-primary/5 pill; list divide-y, lg:max-h-[28rem] lg:overflow-y-auto",
+    "Vendor contacts table (card-soft, only when vendors exist): header with vendor count; columns Vendor/Category/Contact/Phone/Email/Status; Phone column hidden below sm, Email hidden below md; row click \u2192 onOpenVendor(v.id) (cursor-pointer hover:bg-muted/40); tel: and mailto: links stopPropagation so they don't open the panel; status rendered as rounded-full pill using vendorStatusMeta tone + toneClasses; table wrapped in overflow-x-auto"
+   ],
+   "dataFields": [
+    "EventModel.name, date, coverImage, venue.name, venue.address, catering.name, catering.confirmed, attendees.count, attendees.confirmed, budget.spent, budget.total, schedule[].time, schedule[].title, milestones[].id/status/title/date, vendors[].id/vendorName/category/contactName/phone/email/status",
+    "Mutates: coverImage via onUpdateEvent({ coverImage }) \u2014 only field written from this component"
+   ],
+   "notes": "Uses card-soft utility extensively. KeyCard local helper { icon, label, value, sub? }. Cover stored as base64 data URL in mock mode \u2014 real port should upload. DeliveryTracker also reads venue.confirmed/budget.committed via the event prop."
+  },
+  {
+   "name": "CalendarPage",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/CalendarPage.tsx",
+   "props": "interface Props { events: EventModel[]; onSelectEvent: (id: string) => void }",
+   "features": [
+    "Month header 'MMMM yyyy' + subtitle 'Milestones and event dates across all your events' (subtitle hidden on mobile)",
+    "Prev/Next month chevron buttons + 'Today' button (resets cursor to startOfMonth(now))",
+    "Weekday header row Mon\u2013Sun (weekStartsOn: 1); single letters on mobile (sm:hidden), full 3-letter on desktop",
+    "Full month grid: grid-cols-7, days computed from startOfWeek(startOfMonth) to endOfWeek(endOfMonth) by +86400000ms steps; out-of-month cells de-emphasized (bg-transparent border-transparent text-muted-foreground/60); in-month cells bg-background border-border/60",
+    "Today's day number highlighted in filled circle (bg-primary text-primary-foreground rounded-full)",
+    "Day cells min-h-[64px] mobile / sm:min-h-[112px]; itemsByDay map keyed 'yyyy-MM-dd' aggregating each event's date (kind 'event') plus all its milestones (kind 'milestone')",
+    "Event chips: bg-primary-soft text-primary rounded-md with \u2605 prefix; on mobile only \u2605 shows (label hidden sm:inline); click \u2192 onSelectEvent(eventId); hover:bg-primary/15",
+    "Milestone chips: colored category dot (categoryDot map: finance=bg-warning, logistics=bg-info, catering=bg-success, venue=bg-primary, communication=bg-pending, other=bg-muted-foreground) + truncated title (title text hidden on mobile, native title= tooltip); click \u2192 onSelectEvent of owning event",
+    "Max 3 items per day then '+N' overflow counter"
+   ],
+   "dataFields": [
+    "EventModel.id, name, date, milestones[].date/category/title (milestone id unused, index keys)",
+    "No mutations \u2014 read-only"
+   ],
+   "notes": "Ends with `void isSameDay;` to silence unused date-fns import. Uses bg-primary-soft and the bg-pending custom token. Cursor state is local startOfMonth Date."
+  },
+  {
+   "name": "BillingPage",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/BillingPage.tsx",
+   "props": "no props \u2014 export function BillingPage()",
+   "features": [
+    "Static mock billing screen, max-w-3xl mx-auto",
+    "Current Plan card: Wallet icon tile, 'Pro \u2014 billed monthly', '$29 / month', non-functional 'Change plan' link-button",
+    "Payment Method card: CreditCard icon tile, 'Visa ending in 4242', green 'Active' pill (hardcoded emerald-100/emerald-700 + dark:emerald-900/30 dark:emerald-400 \u2014 NOT the semantic success token), non-functional 'Update card' link-button",
+    "Recent Invoices card: Receipt icon tile, 3 hardcoded rows (Jun/May/Apr 1 2026, $29.00, 'Paid' muted pill), divider borders"
+   ],
+   "dataFields": [
+    "none \u2014 entirely hardcoded local literals"
+   ],
+   "notes": "Only place using raw Tailwind emerald palette instead of design tokens. All buttons are inert."
+  },
+  {
+   "name": "ProvidersPage (ORPHAN \u2014 never imported/mounted)",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/ProvidersPage.tsx",
+   "props": "interface Props { events: EventModel[]; onOpenEvent: (id: string) => void }",
+   "features": [
+    "Flattens all vendors across all events into Row { vendorId, eventId, eventName, vendor }",
+    "Search input (Search icon inset-left, bg-muted/60 rounded-xl) matching vendorName, contactName, email, or eventName (case-insensitive)",
+    "Category multi-select Popover (same checkbox pattern as MyEventsPage but with category icons per row; align='end'; 'Clear selection' footer; summary text 'All categories' / label / 'N categories') plus separate X clear button when active",
+    "List table in rounded-2xl border card: desktop 12-col grid header (Provider 4 / Contact 3 / Event 3 / Status 2, hidden below md); rows stack to single column on mobile",
+    "Provider cell: category icon tile (bg-primary-soft text-primary), vendor name + category label; on mobile status pill moves inline to this row (md:hidden ml-auto)",
+    "Contact cell: contact name, mailto link with Mail icon, tel link with Phone icon, optional website link 'site' with Globe icon (target=_blank rel=noreferrer)",
+    "Event cell: event name as text-primary hover:underline button \u2192 onOpenEvent(eventId)",
+    "Status cell (desktop): tone pill via toneClasses[vendorStatusMeta[status].tone]",
+    "Row hover:bg-muted/30; empty state 'No providers match your filters.'"
+   ],
+   "dataFields": [
+    "EventModel.id, name, vendors; VendorContact.id, vendorName, contactName, email, phone, website, category, status",
+    "No mutations"
+   ],
+   "notes": "ORPHANED: grep confirms no file imports ProvidersPage. Its onOpenEvent prop matches the shell's openEvent(id) signature \u2014 likely a dropped 4th tab. Port decision needed: include or drop."
+  },
+  {
+   "name": "NewEventChat",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/NewEventChat.tsx",
+   "props": "interface Props { onCancel: () => void; onCreate: (evt: EventModel) => void }",
+   "features": [
+    "Full-height column chat UI: header (Sparkles icon in bg-primary-soft tile, 'New event with Eventiq' + subtitle), X cancel button \u2192 onCancel",
+    "Scripted 5-step wizard (SCRIPT array): asks name \u2192 type \u2192 date (YYYY-MM-DD) \u2192 guest count \u2192 final 'Tap Create event' message; each user answer parsed into draft state",
+    "Type parsing: lowercase substring match against eventTypeMeta keys, fallback 'other'; guests parsed via parseInt of digits-only; date kept as raw string",
+    "Message rendering: agent messages plain text left-aligned (max-w-[80%]); user messages right-aligned bubbles (rounded-2xl bg-primary text-primary-foreground)",
+    "Auto-scroll to bottom + autofocus input on each new message",
+    "Textarea composer (rows=1, max-h-32, Enter sends / Shift+Enter newline), Send icon button disabled when input empty (disabled:opacity-40)",
+    "When script complete (ready), composer is replaced by a footer summary 'Draft: {name} \u00b7 {type label} \u00b7 {date} \u00b7 {guests} guests' + 'Create event' button",
+    "create() builds EventModel: id `evt-${Date.now()}`, name || 'Untitled event', status 'draft', type ?? 'other', date = parsed draft date toISOString (fallback now+30 days), updatedAt now, attendees { count: guests, confirmed: 0 } only if guests given, vendors: [], milestones: []; calls onCreate(evt) \u2014 this is the mock 'create event' API"
+   ],
+   "dataFields": [
+    "Constructs/mutates: EventModel.id, name, status, type, date, updatedAt, attendees, vendors, milestones (via onCreate)",
+    "Reads eventTypeMeta for type parsing and draft summary label"
+   ],
+   "notes": "No persistence \u2014 chat resets if cancelled. Local Msg type { id, role: 'user'|'agent', text }. send() guards step >= SCRIPT.length-1."
+  },
+  {
+   "name": "EventAgentChat",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/EventAgentChat.tsx",
+   "props": "interface Props { event: EventModel; onClose: () => void }",
+   "features": [
+    "Per-event chat persisted in localStorage under key `eventiq:chat:${eventId}` (load with corrupt-JSON guard; save on every message change in try/catch)",
+    "Seed greeting when no stored thread: 'Hi! I'm here to help you organize {event.name}. What would you like to discuss?'",
+    "Reloads thread when event.id/event.name changes (switching events)",
+    "Header: MessageSquare icon in bg-primary-soft tile, 'Event Agent' title, 'Organizing {event.name}' subtitle, X close button \u2192 onClose",
+    "Same bubble styling as NewEventChat (agent plain left, user bg-primary bubble right, max-w-[80%])",
+    "Auto-scroll + autofocus on message change",
+    "Composer: textarea Enter-to-send/Shift+Enter newline, Send button disabled when empty",
+    "Canned agent reply for every send: 'Thanks for your message! I'll review the details for your event and get back to you shortly.' \u2014 replace with real agent backend"
+   ],
+   "dataFields": [
+    "EventModel.id (storage key), EventModel.name (greeting/subtitle)",
+    "No EventModel mutations; mutates only localStorage chat threads"
+   ],
+   "notes": "Shares the localStorage key namespace `eventiq:chat:${id}` with FloatingAgentChat, so both views see the same per-event thread."
+  },
+  {
+   "name": "FloatingAgentChat",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/FloatingAgentChat.tsx",
+   "props": "interface Props { events: EventModel[]; activeEventId?: string | null }",
+   "features": [
+    "Closed state: fixed bottom-5 right-5 z-40 h-14 w-14 round FAB (bg-primary, Sparkles icon, shadow-lg, hover:scale-105 transition-transform)",
+    "Open state: fixed bottom-right panel w-[min(92vw,380px)] h-[min(80vh,560px)] rounded-2xl border bg-card shadow-2xl",
+    "Header: MessageSquare tile, 'Event Agent', subtitle 'Linked to {name}' or 'General chat', X close button",
+    "Linked-event banner (when linked): bg-muted/30 strip with Link2 icon + 'Conversation linked to \"{name}\"' + 'Unlink' button (setLinkedId(null) \u2192 switches to global thread)",
+    "Thread storage: global key 'eventiq:chat:global' or per-event `eventiq:chat:${id}` (shared with EventAgentChat); load/persist with try/catch; reload when currentKey changes",
+    "Auto-link: useEffect sets linkedId whenever activeEventId becomes truthy (navigating into an event links the FAB chat)",
+    "Event-mention detection on send: detectEvent lowercases input, sorts events by name length desc (longest match wins), skips names <3 chars, substring match \u2192 if a different event matched, switches linkedId, loads that event's stored thread, appends user msg + agent msg 'Got it \u2014 linking this conversation to \"{name}\". How can I help?', and writes the merged thread straight to localStorage",
+    "Normal send: canned reply \u2014 linked: 'Thanks! I'll look into that for {name} and get back to you shortly.'; unlinked: 'Thanks! Tell me which event this relates to, or ask me anything to get started.'",
+    "Greetings: linked 'Hi! I'm here to help you organize {name}. What would you like to discuss?'; global 'Hi! I'm your event assistant. Ask me anything, or mention an event by name to focus our conversation on it.'",
+    "Bubbles max-w-[85%]; composer placeholder 'Mention an event by name to link it\u2026'; Enter sends; Send disabled when empty; auto-scroll/focus only while open"
+   ],
+   "dataFields": [
+    "EventModel.id, name (detection, linking, greetings, storage keys)",
+    "No EventModel mutations; writes localStorage chat threads (including direct setItem during link-switch)"
+   ],
+   "notes": "Always mounted by the shell, overlays everything (z-40, same z as mobile sidebar drawer \u2014 FAB sits under open VendorDetailPanel on mobile since panel is z-50). currentKey/greeting recomputed per render; eslint-disable on reload effect deps."
+  },
+  {
+   "name": "VendorStrip (ORPHAN \u2014 never imported/mounted)",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/VendorStrip.tsx",
+   "props": "interface Props { vendors: VendorContact[]; onOpen: (id: string) => void }",
+   "features": [
+    "card-soft container with animate-card-in entrance animation and inline style animationDelay 350ms",
+    "Header: Users icon + 'Vendor contacts' uppercase label, '{n} vendors' count on right",
+    "Empty state: 'No vendors yet \u2014 ask the agent to add one.'",
+    "Horizontal scroll strip (flex gap-3 overflow-x-auto snap-x) of fixed-width w-[260px] snap-start vendor cards; card click \u2192 onOpen(v.id)",
+    "Each card: category icon tile (bg-primary/10 text-primary) + category label, status tone pill (toneClasses), vendor name + contact name truncated",
+    "Quick-action icon buttons: tel: Phone, mailto: Mail, optional website Globe (target=_blank) \u2014 all stopPropagation; hover:bg-primary/10 hover:text-primary",
+    "Pencil edit affordance on far right, opacity-0 group-hover:opacity-100 (reveal on card hover)",
+    "Card hover: hover:bg-muted/40 hover:border-primary/40"
+   ],
+   "dataFields": [
+    "VendorContact.id, category, vendorName, contactName, phone, email, website, status",
+    "No mutations"
+   ],
+   "notes": "ORPHANED: grep confirms nothing imports VendorStrip \u2014 OverviewTab replaced it with an inline table. Only component using animate-card-in with a stagger delay."
+  },
+  {
+   "name": "VendorDetailPanel",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/VendorDetailPanel.tsx",
+   "props": "interface Props { vendor: VendorContact; onClose: () => void; onUpdate: (patch: Partial<VendorContact>) => void }",
+   "features": [
+    "Right-side panel: md:static md:w-[360px] border-l on desktop; full-screen overlay on mobile (fixed z-50 inset-0 w-full); enters with animate-slide-in-right (0.2s)",
+    "Header: category icon tile, category label, vendor name, X close button \u2192 onClose",
+    "Contact section: contact name, tel/mailto/website links (each hover:text-primary), plus a row of 2-3 equal-width outline action buttons 'Call' (Phone), 'Email' (Mail), conditional 'Site' (Globe, target=_blank)",
+    "Status section: native <select> of all 6 VendorStatus options (order: quote_requested, awaiting_confirmation, deposit_paid, booked, delivered, cancelled) labeled via vendorStatusMeta; onChange calls onUpdate({ status: s, statusHistory: [...vendor.statusHistory, { status: s, timestamp: new Date().toISOString() }] }) \u2014 i.e. status change APPENDS to history; below it a 'Current: {label}' tone pill",
+    "Notes section: textarea (rows 4) with local state seeded from vendor.notes, re-synced on vendor.id/vendor.notes change; commits ON BLUR via onUpdate({ notes }) \u2014 inline-edit pattern",
+    "Activity log: statusHistory rendered newest-first ([...].reverse()), each entry bg-primary dot + 'Status changed to <label>' + timestamp formatted \"MMM d, yyyy 'at' h:mm a\""
+   ],
+   "dataFields": [
+    "Reads: VendorContact.id, category, vendorName, contactName, phone, email, website, status, notes, statusHistory[].status/timestamp",
+    "Mutates via onUpdate patches: status + statusHistory (append entry with ISO timestamp), notes (blur commit). Shell merges patch into the vendor inside events state \u2014 these are the future PATCH /vendors/:id calls."
+   ],
+   "notes": "Shell remounts it with key={openVendor.id} so internal notes state resets per vendor. format() called on raw new Date(timestamp) (not parseISO)."
+  },
+  {
+   "name": "DeliveryTracker",
+   "file": "/Users/sakspari/Downloads/Event Compass/src/components/eventiq/DeliveryTracker.tsx",
+   "props": "({ event }: { event: EventModel }) \u2014 single prop, no interface",
+   "features": [
+    "5-step horizontal progress stepper: Planning \u2192 Venues confirmed \u2192 Vendors booked \u2192 Payments done \u2192 Ready",
+    "Derived completion: step1 always true; venueConfirmed = !!event.venue?.confirmed; vendorsBooked = vendors.length > 0 AND every vendor status in {booked, deposit_paid, delivered}; paymentsDone = budget ? spent >= committed * 0.9 : false; ready = event.status === 'completed'",
+    "currentIdx = first incomplete step; lastDone derived for connector coloring",
+    "Done step: filled circle bg-primary with Check icon; current step: bg-card border-2 border-primary text-primary with pulse-ring animated glow; future step: bg-muted with number",
+    "Connector lines h-px between steps, bg-primary up to lastDone else bg-border",
+    "Labels under circles, font-medium foreground for done/current, muted otherwise",
+    "Container: animate-card-in entrance, overflow-x-auto with min-w-[480px] inner row so the stepper horizontally scrolls on small screens"
+   ],
+   "dataFields": [
+    "EventModel.venue.confirmed, vendors[].status, budget.spent, budget.committed, status",
+    "No mutations \u2014 pure derived display"
+   ],
+   "notes": "Mounted only inside OverviewTab. Uses custom utilities animate-card-in and pulse-ring."
+  }
+ ],
+ "designNotes": "styles.css is Tailwind v4 syntax: `@import \"tailwindcss\" source(none)` + `@source \"../src\"` + `@import \"tw-animate-css\"`, `@custom-variant dark (&:is(.dark *))` (class-based dark mode toggled on documentElement by the shell, persisted as localStorage 'eventiq-theme'). All colors oklch. Beyond standard shadcn tokens it defines FIVE extra semantic colors registered in a second @theme inline block: --color-success (green #16A34A-ish), --color-warning (amber), --color-pending (gray), --color-info (blue), --color-primary-soft (pale orange tint; dark variant oklch(0.32 0.09 55)). Primary is ORANGE oklch(0.74 0.17 55) \u2248 #FF8D01 ('Luma-inspired' palette; the comment 'Signature violet glow' is stale \u2014 it is orange). Radius base 0.625rem with extended --radius-2xl/3xl/4xl steps. Body font 'Inter' with font-feature-settings \"cv11\",\"ss01\", antialiased. Four custom @utility classes used throughout: `glow-primary` (double box-shadow ring+blur via color-mix of --primary, used on active sidebar item), `card-soft` (white card, 1rem radius, subtle dual shadow \u2014 the standard dashboard card), `animate-card-in` (0.35s fade+translateY(8px) entrance), `animate-slide-in-right` (0.2s translateX(100%)\u21920, vendor panel), `pulse-ring` (1.8s infinite expanding box-shadow ring, current stepper step). categoryDot in CalendarPage maps milestone categories to these tokens (bg-warning/bg-info/bg-success/bg-primary/bg-pending). meta.ts toneClasses provides badge recipes: `bg-{tone}/10 text-{tone} ring-1 ring-inset ring-{tone}/20` for success/primary/warning/info/danger(destructive)/muted. Logo: src/assets/eventiq-logo.svg.asset.json is a platform asset manifest (Lovable/L5E-style) pointing url \"/__l5e/assets-v1/8672f5c3-0342-4a83-85a3-580446e180ef/eventiq-logo.svg\" (2261-byte SVG, r2-hosted); Sidebar imports the JSON and uses logoAsset.url \u2014 port must replace with a real static SVG import. BillingPage uniquely bypasses tokens with raw emerald-100/700 classes. Status dot colors come from eventStatusMeta.dot (bg-info/bg-success/bg-warning/bg-pending). shadcn components actually used: only Popover (PopoverTrigger/PopoverContent with asChild and align=\"end\").",
+ "dependencies": [
+  "react",
+  "@tanstack/react-router",
+  "lucide-react",
+  "date-fns",
+  "@radix-ui/react-popover (via local shadcn @/components/ui/popover)",
+  "tailwindcss (v4)",
+  "tw-animate-css"
+ ],
+ "shellWiring": "routes/index.tsx defines the single \"/\" file route with head() meta and an Index component holding ALL app state in useState: events (EventModel[], seeded from mockEvents), activeId (string|null selected event), tab (Tab = 'calendar'|'events'|'billing', type imported from TabBar.tsx), openVendorId (string|null), creating (bool, new-event chat mode), dark (theme bool), eventChatOpen (bool, dashboard vs agent-chat toggle inside an event), sidebarOpen (mobile drawer bool). Derived: activeEvent = events.find(id===activeId); openVendor = activeEvent?.vendors.find(id===openVendorId). Theme: bootstrap effect reads localStorage 'eventiq-theme' falling back to prefers-color-scheme; second effect toggles 'dark' class on <html> and persists. Layout: h-screen flex \u2192 <Sidebar active tab, onChange (switches tab; if tab !== 'events' clears activeId; always clears openVendorId/creating/eventChatOpen), onNew=handleNewEvent, mobileOpen/onMobileClose> \u2192 <main flex-1> content column with two absolute z-20 buttons (mobile Menu opens sidebar; Sun/Moon theme toggle top-right) over a flex-1 overflow-y-auto scroll area. Rendering priority: creating ? <NewEventChat onCancel={setCreating(false)} onCreate={handleCreateFromChat}> replaces everything : tab==='calendar' \u2192 <CalendarPage events onSelectEvent={openEvent}>; tab==='events' \u2192 activeEvent ? detail view (back button clearing activeId+chat, segmented Dashboard/Agent-chat pill toggle, then eventChatOpen ? <EventAgentChat event onClose> : <OverviewTab event onOpenVendor={setOpenVendorId} onUpdateEvent={handleEventUpdate}>) : <MyEventsPage events onSelect={openEvent} onNew={handleNewEvent}>; tab==='billing' \u2192 <BillingPage/> (no props). Right side: {openVendor && !creating} \u2192 <VendorDetailPanel key={openVendor.id} vendor onClose={setOpenVendorId(null)} onUpdate={handleVendorUpdate}> (key forces remount per vendor so notes textarea resets). Always-on: <FloatingAgentChat events activeEventId={activeId}> at root. Mock mutation handlers (the future API surface): handleNewEvent() resets selection and enters creating mode; handleCreateFromChat(evt) \u2192 setEvents(prev => [evt, ...prev]) i.e. POST /events then select it; handleEventUpdate(patch: Partial<EventModel>) \u2192 map events, spread patch onto activeEvent i.e. PATCH /events/:id (currently only coverImage flows through this, from OverviewTab photo upload); handleVendorUpdate(patch: Partial<VendorContact>) \u2192 map events \u2192 map vendors, spread patch onto openVendor i.e. PATCH /events/:eventId/vendors/:vendorId (status+statusHistory append, and notes blur-commit from VendorDetailPanel); openEvent(id) selects an event, forces 'events' tab, closes vendor panel and chat. Mobile: sidebar is an off-canvas fixed drawer with backdrop, hamburger lives in the shell; vendor panel goes full-screen fixed z-50; FAB chat is fixed bottom-right z-40.",
+ "orphans": [
+  "ProvidersPage (/Users/sakspari/Downloads/Event Compass/src/components/eventiq/ProvidersPage.tsx) \u2014 never imported anywhere; matches the shell's openEvent signature, likely a dropped 4th nav tab",
+  "VendorStrip (/Users/sakspari/Downloads/Event Compass/src/components/eventiq/VendorStrip.tsx) \u2014 never imported; superseded by the inline vendor table in OverviewTab",
+  "TabBar component (/Users/sakspari/Downloads/Event Compass/src/components/eventiq/TabBar.tsx) \u2014 the component function is never rendered (shell builds its own header inline), BUT its `export type Tab` IS imported by routes/index.tsx and Sidebar.tsx, so the type must survive the port even if the component is dropped"
+ ]
+}
