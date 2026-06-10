@@ -1,5 +1,4 @@
 import { ChatBedrockConverse } from '@langchain/aws';
-import { ChatOpenAI } from '@langchain/openai';
 import { SystemMessage, BaseMessage } from '@langchain/core/messages';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { orchestratorTools } from './tools';
@@ -11,20 +10,6 @@ import type { AgentStateType } from './state';
 
 /** Claude Sonnet — orchestrator (complex reasoning, delegation decisions) */
 function createSonnet() {
-  // Try Vercel AI Gateway first (better observability, caching)
-  const gatewayKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
-  if (gatewayKey) {
-    const llm = new ChatOpenAI({
-      modelName: process.env.AI_PRIMARY_MODEL || 'anthropic/claude-sonnet-4-20250514',
-      openAIApiKey: gatewayKey,
-      configuration: { baseURL: 'https://gateway.vercel.ai/v1' },
-      temperature: 0.3,
-      maxTokens: 4096,
-    });
-    return llm.bindTools(orchestratorTools);
-  }
-
-  // Fallback to direct Bedrock
   const llm = new ChatBedrockConverse({
     model: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
     region: process.env.AWS_REGION || 'us-east-1',

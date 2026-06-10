@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { EventSummary } from '@/types/event';
 import type { CreditBalance } from '@/types/payment';
+import { useChatStore } from './chat-store';
 
 export type ViewMode = 'chat' | 'whiteboard';
 
@@ -60,6 +61,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         events: events.filter((e) => e.id !== id),
         activeEventId: activeEventId === id ? null : activeEventId,
       });
+      // Clear chat if user was viewing this event
+      if (activeEventId === id) {
+        useChatStore.getState().clearMessages();
+      }
     } catch (e) {
       console.error('Failed to delete event:', e);
     }
