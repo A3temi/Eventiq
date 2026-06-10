@@ -2,12 +2,7 @@ import { create } from 'zustand';
 import type { EventSummary } from '@/types/event';
 import type { CreditBalance } from '@/types/payment';
 
-export type ViewMode = 'chat' | 'whiteboard';
-
 interface AppState {
-  mode: ViewMode;
-  setMode: (mode: ViewMode) => void;
-
   // Events
   events: EventSummary[];
   activeEventId: string | null;
@@ -28,9 +23,6 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  mode: 'chat',
-  setMode: (mode) => set({ mode }),
-
   events: [],
   activeEventId: null,
   eventsLoading: false,
@@ -71,7 +63,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!event) return;
     const newPinned = !event.pinned;
 
-    // Optimistic update
     set({
       events: events
         .map((e) => (e.id === id ? { ...e, pinned: newPinned } : e))

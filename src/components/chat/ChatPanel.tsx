@@ -5,7 +5,7 @@ import { useSession, signIn } from 'next-auth/react';
 import ReactMarkdown from 'react-markdown';
 import { useChatStore } from '@/stores/chat-store';
 import { useAppStore } from '@/stores/app-store';
-import { Send, Paperclip, Bot, User, Loader2, Lock } from 'lucide-react';
+import { Send, Sparkles, Bot, User, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalCard } from './ApprovalCard';
 import { ReasoningTrace } from './ReasoningTrace';
@@ -17,6 +17,7 @@ export function ChatPanel() {
   const [input, setInput] = useState('');
   const [credits, setCredits] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const { data: session, status } = useSession();
   const { messages, isLoading, historyLoading, pendingApprovals } = useChatStore();
   const activeEventId = useAppStore((s) => s.activeEventId);
@@ -72,12 +73,12 @@ export function ChatPanel() {
         return;
       }
 
-      // Update active event if one was created
       if (data.eventId && !activeEventId) {
         useAppStore.getState().setActiveEvent(data.eventId);
-        // Refresh events list
-        fetchEvents();
       }
+
+      // Always refresh events list so calendar/sidebar picks up date/status changes
+      fetchEvents();
 
       useChatStore.getState().addMessage({
         id: crypto.randomUUID(),
@@ -87,7 +88,6 @@ export function ChatPanel() {
         metadata: data.metadata,
       });
 
-      // Refresh credits after operation
       fetch('/api/credits')
         .then((r) => r.json())
         .then((d) => setCredits(d.balance))
@@ -105,45 +105,42 @@ export function ChatPanel() {
   };
 
   const handleOptionSelect = (option: OptionCard) => {
-    const confirmMessage = `I'd like to go with "${option.name}"${option.price ? ` (${option.price})` : ''}. Please proceed with this choice.`;
+    const confirmMessage = `I'd like to go with "${option.name}"${option.price ? ` (${option.price})` : ''}. Please proceed.`;
     setInput(confirmMessage);
-    // Auto-submit
-    const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
     setTimeout(() => {
-      setInput(confirmMessage);
+      const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
       handleSubmit(fakeEvent);
     }, 100);
   };
 
   const handleShuffle = () => {
-    setInput('Can you search for more options? I want to see different alternatives.');
+    setInput('Show me more options — different alternatives please.');
   };
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-5">
         {historyLoading ? (
           <div className="flex flex-col items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             <p className="text-sm text-muted-foreground mt-2">Loading conversation...</p>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-              <Bot className="w-8 h-8 text-primary" />
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+              <Sparkles className="w-6 h-6 text-primary" />
             </div>
-            <h2 className="text-xl font-semibold">Eventiq</h2>
-            <p className="text-sm text-muted-foreground mt-2 max-w-md">
-              Describe your event and I&apos;ll handle venues, vendors,
-              tickets, payments, and more. Singapore-focused.
+            <h2 className="text-xl font-bold tracking-tight">Eventiq</h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-sm leading-relaxed">
+              Describe your event and I'll handle venues, vendors, catering, schedule, and more. Singapore-focused.
             </p>
             {!session && status !== 'loading' && (
               <button
                 onClick={() => signIn('google')}
-                className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors"
+                className="mt-6 rounded-xl bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:opacity-90 transition"
               >
-                Sign in with Google to get started
+                Sign in to get started
               </button>
             )}
             {session && (
@@ -157,33 +154,40 @@ export function ChatPanel() {
             <div
               key={msg.id}
               className={cn(
-                'flex gap-3 max-w-3xl',
+                'flex gap-3 max-w-3xl animate-card-in',
                 msg.role === 'user' ? 'ml-auto flex-row-reverse' : ''
               )}
             >
+              {/* Avatar */}
               <div className={cn(
-                'w-8 h-8 rounded-full flex items-center justify-center shrink-0',
-                msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                'w-8 h-8 rounded-xl flex items-center justify-center shrink-0',
+                msg.role === 'user'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted'
               )}>
-                {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
               </div>
+
+              {/* Bubble */}
               <div className={cn(
-                'rounded-xl p-3 max-w-prose',
+                'rounded-2xl px-4 py-3 max-w-prose',
                 msg.role === 'user'
                   ? 'bg-primary text-primary-foreground'
                   : msg.role === 'system'
                   ? 'bg-destructive/10 border border-destructive/20'
-                  : 'bg-muted'
+                  : 'bg-muted/60'
               )}>
                 {msg.metadata?.agentName && (
-                  <div className="text-xs font-medium opacity-70 mb-1">
+                  <div className="text-[11px] font-medium opacity-60 mb-1">
                     {msg.metadata.agentName}
                     {msg.metadata.creditsCost && (
                       <span className="ml-2">• {msg.metadata.creditsCost} credits</span>
                     )}
                   </div>
                 )}
-                <div className="text-sm prose prose-sm prose-neutral max-w-none dark:prose-invert [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>li]:my-0.5 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&_a]:text-primary [&_a]:underline">
+
+                {/* Markdown content */}
+                <div className="text-sm prose prose-sm prose-neutral dark:prose-invert max-w-none [&>p]:my-1 [&>ul]:my-1.5 [&>ol]:my-1.5 [&>li]:my-0.5 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&_a]:text-primary [&_a]:no-underline [&_a:hover]:underline [&_strong]:font-semibold">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
 
@@ -201,7 +205,6 @@ export function ChatPanel() {
                   />
                 )}
 
-                {/* Legacy reasoning trace */}
                 {msg.metadata?.reasoningTrace && (
                   <ReasoningTrace steps={msg.metadata.reasoningTrace} />
                 )}
@@ -214,11 +217,11 @@ export function ChatPanel() {
         )}
 
         {isLoading && (
-          <div className="flex gap-3">
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-              <Loader2 className="w-4 h-4 animate-spin" />
+          <div className="flex gap-3 animate-card-in">
+            <div className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             </div>
-            <div className="bg-muted rounded-xl p-3">
+            <div className="bg-muted/60 rounded-2xl px-4 py-3">
               <p className="text-sm text-muted-foreground">Thinking...</p>
             </div>
           </div>
@@ -227,39 +230,41 @@ export function ChatPanel() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input bar - always visible */}
-      <form onSubmit={handleSubmit} className="border-t p-4 bg-card">
-        <div className="flex items-center gap-2 max-w-3xl mx-auto">
-          <button
-            type="button"
-            className="p-2 rounded-md hover:bg-accent transition-colors text-muted-foreground"
-            aria-label="Attach file"
-          >
-            <Paperclip className="w-5 h-5" />
-          </button>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={session ? 'Describe your event or ask me anything...' : 'Sign in to start planning...'}
-            className="flex-1 px-4 py-2.5 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="p-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            aria-label="Send message"
-          >
-            {!session ? <Lock className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-          </button>
-        </div>
-        {session && credits !== null && (
-          <div className="text-center text-xs text-muted-foreground mt-2">
-            ✨ {credits} credits remaining
+      {/* Input */}
+      <div className="border-t border-border p-4 bg-card/60 backdrop-blur-sm">
+        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+          <div className="flex items-end gap-2 rounded-2xl border border-border bg-card px-4 py-3 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/40 transition-all">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              rows={1}
+              placeholder={session ? 'Describe your event or ask anything...' : 'Sign in to start planning...'}
+              className="flex-1 bg-transparent resize-none outline-none text-sm py-0.5 max-h-32 placeholder:text-muted-foreground/60"
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className="h-8 w-8 grid place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition shrink-0"
+              aria-label="Send message"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
           </div>
-        )}
-      </form>
+          {session && credits !== null && (
+            <div className="text-center text-[11px] text-muted-foreground mt-2">
+              ✨ {credits} credits remaining
+            </div>
+          )}
+        </form>
+      </div>
     </div>
   );
 }

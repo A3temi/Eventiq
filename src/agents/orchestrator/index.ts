@@ -34,6 +34,53 @@ function extractEventName(message: string): string {
 }
 
 /**
+ * Extract a date from text. Handles multiple formats:
+ * - YYYY-MM-DD (ISO)
+ * - "December 14, 2025" or "Dec 14, 2025"
+ * - "14 December 2025" or "14 Dec 2025"
+ * - "this Saturday" style dates from get_current_datetime JSON
+ */
+function extractDate(text: string): string | null {
+  // ISO format: 2025-12-14
+  const isoMatch = text.match(/(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+
+  // From get_current_datetime JSON responses: "thisSaturday":"2025-12-14"
+  const jsonDateMatch = text.match(/"(?:today|tomorrow|thisSaturday|thisSunday|nextMonday)"\s*:\s*"(\d{4}-\d{2}-\d{2})"/);
+  if (jsonDateMatch) return jsonDateMatch[1];
+
+  // "December 14, 2025" or "Dec 14, 2025"
+  const months: Record<string, number> = {
+    jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+    may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, sep: 8, september: 8,
+    oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
+  };
+
+  const longMatch = text.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})\b/i);
+  if (longMatch) {
+    const month = months[longMatch[1].toLowerCase().slice(0, 3)];
+    const day = parseInt(longMatch[2]);
+    const year = parseInt(longMatch[3]);
+    if (month !== undefined && day && year) {
+      return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  // "14 December 2025" or "14th Dec 2025"
+  const revMatch = text.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?),?\s*(\d{4})\b/i);
+  if (revMatch) {
+    const day = parseInt(revMatch[1]);
+    const month = months[revMatch[2].toLowerCase().slice(0, 3)];
+    const year = parseInt(revMatch[3]);
+    if (month !== undefined && day && year) {
+      return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse tool results from agent response to extract structured option cards.
  */
 function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
@@ -59,19 +106,31 @@ function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
   else if (lastSearchTool === 'web_search') defaultType = '';
 
   for (const line of lines) {
-    // SKIP lines that look like schedule/time slots (e.g. "3:00-3:10 | Welcome")
+    // SKIP lines that look like schedule/time slots
+    if (line.match(/\d{1,2}[:.]\d{2}\s*(?:[-–]\s*\d{1,2}[:.]\d{2})?\s*\|/)) continue;
     if (line.match(/^\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}/)) continue;
-    if (line.match(/\d{1,2}:\d{2}\s*\|/)) continue;
+    if (line.match(/\d{1,2}:\d{2}\s*(?:PM|AM)/i)) continue;
 
-    // SKIP lines that are just emoji headers or status lines
-    if (line.match(/^[📋🎯✅🚀⏰]/)) continue;
+    // SKIP lines that are emoji headers or status lines
+    if (line.match(/^[📋🎯✅🚀⏰📅🍽️🎤💬]/)) continue;
 
     // Match numbered items: "1. **Name** - desc" or "1. Name — desc"
     const numberedMatch = line.match(/^\d+\.\s+\*?\*?(.+?)\*?\*?\s*[-–—:]\s*(.+)/);
     if (numberedMatch) {
       const name = numberedMatch[1].replace(/\*+/g, '').trim();
-      // Skip if the "name" looks like a time slot or schedule item
-      if (name.match(/^\d{1,2}[:.]\d{2}/) || name.match(/^Session|^Break|^Lunch|^Welcome|^Wrap/i)) continue;
+      // Skip time slots
+      if (name.match(/^\d{1,2}[:.]\d{2}/)) continue;
+      if (name.match(/^Session|^Break|^Lunch|^Welcome|^Wrap|^Coffee|^Registration|^Networking/i)) continue;
+      // Skip quoted titles
+      if (name.match(/^[""\u201c]/) || name.match(/[""\u201d]$/)) continue;
+      // Skip topic-style items without URLs
+      if (name.match(/^(What|How|Why|When|Where|Building|Defining|On-Device|Opening|Interactive|Future)/i) && !line.match(/https?:\/\//)) continue;
+      // Skip action items (verb-first phrases)
+      if (name.match(/^(Book|Confirm|Secure|Send|Get|Find|Check|Review|Finalize|Order|Arrange|Contact|Follow|Set up|Create|Plan|Prepare|Schedule|Hire|Research|Notify|Place)/i)) continue;
+      // Skip generic non-vendor phrases
+      if (name.match(/^(Next|Immediate|Your|The |This |Here|Note|Option|Step|Action|Task|Todo|Tip|Duration|Date|Timeline|Proposed)/i)) continue;
+      // Must start with a capital letter and be a reasonable length for a business name
+      if (!name.match(/^[A-Z]/) || name.length > 60 || name.length < 3) continue;
 
       if (currentOption?.name) {
         options.push(currentOption as OptionCard);
@@ -88,7 +147,14 @@ function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
     const boldMatch = line.match(/^\s*\*\*(.+?)\*\*\s*[-–—:]\s*(.+)/);
     if (boldMatch) {
       const name = boldMatch[1].trim();
-      if (name.match(/^\d{1,2}[:.]\d{2}/) || name.match(/^Session|^Break|^Lunch|^Welcome|^Wrap/i)) continue;
+      // Same filters as numbered items
+      if (name.match(/^\d{1,2}[:.]\d{2}/)) continue;
+      if (name.match(/^Session|^Break|^Lunch|^Welcome|^Wrap|^Coffee|^Registration|^Networking/i)) continue;
+      if (name.match(/^[""\u201c]/) || name.match(/[""\u201d]$/)) continue;
+      if (name.match(/^(What|How|Why|When|Where|Building|Defining|On-Device|Opening|Interactive|Future)/i) && !line.match(/https?:\/\//)) continue;
+      if (name.match(/^(Book|Confirm|Secure|Send|Get|Find|Check|Review|Finalize|Order|Arrange|Contact|Follow|Set up|Create|Plan|Prepare|Schedule|Hire|Research|Notify|Place)/i)) continue;
+      if (name.match(/^(Next|Immediate|Your|The |This |Here|Note|Option|Step|Action|Task|Todo|Tip|Duration|Date|Timeline|Proposed)/i)) continue;
+      if (!name.match(/^[A-Z0-9]/) || name.length > 60 || name.length < 3) continue;
 
       if (currentOption?.name) {
         options.push(currentOption as OptionCard);
@@ -146,7 +212,9 @@ function parseOptions(response: string, toolsUsed: string[]): OptionCard[] {
     }
   }
 
-  return options;
+  // Filter out options that don't look like real venue/vendor/food results
+  // (no URL and type is just 'result' = likely a topic suggestion, not actionable)
+  return options.filter(opt => opt.url || opt.type !== 'result');
 }
 
 /**
@@ -231,7 +299,7 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
   }
   if (!event) {
     const eventName = extractEventName(message);
-    event = await createEvent(userId, { name: eventName });
+    event = await createEvent(userId, { name: eventName, status: 'planning' });
     eventId = event.id;
   }
 
@@ -242,11 +310,23 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     content: m.content,
   }));
 
-  // Update event name if it was created with default name
+  // Update event name and status on first real message
   if (event.name === 'New Event' && history.length === 0) {
     const newName = extractEventName(message);
     if (newName !== 'New Event') {
       await updateEvent(eventId!, { name: newName, status: 'planning' });
+    }
+  } else if (event.status === 'draft') {
+    // Always move from draft to planning once user starts chatting
+    await updateEvent(eventId!, { status: 'planning' });
+  }
+
+  // Try to extract a date from the user message and update the event
+  if (!event.date || event.date === '') {
+    const extracted = extractDate(message);
+    if (extracted) {
+      await updateEvent(eventId!, { date: extracted });
+      event.date = extracted;
     }
   }
 
@@ -274,11 +354,61 @@ export async function orchestrate(input: OrchestrateInput): Promise<OrchestrateR
     const thinking = buildThinkingSteps(toolsUsed);
     const totalCost = baseCost + toolCost;
 
+    // Extract date from agent response if event has no date
+    if (!event.date || event.date === '') {
+      const extracted = extractDate(response);
+      if (extracted) {
+        await updateEvent(eventId!, { date: extracted });
+      }
+    }
+
+    // Update event with structured data extracted from messages
+    const eventUpdates: Record<string, unknown> = {};
+
+    // Extract attendee count
+    const guestMatch = (message + ' ' + response).match(/(\d+)\s*(?:people|pax|guests|attendees|persons)/i);
+    if (guestMatch && event.attendeeCount === 0) {
+      eventUpdates.attendeeCount = parseInt(guestMatch[1]);
+    }
+
+    // Extract location ONLY from explicit confirmation messages, not from search results
+    // The dashboard handles location display from user confirmations
+    if (!event.location && /\b(finalize|confirmed|booked|go with)\b/i.test(message)) {
+      // Only save a clean venue name, not a description
+      const venueNames = ['Marina Bay Sands', 'Singapore Expo', 'Suntec', 'MIT Space', 'Changi', 'Raffles'];
+      for (const name of venueNames) {
+        if (message.toLowerCase().includes(name.toLowerCase())) {
+          eventUpdates.location = name + ', Singapore';
+          break;
+        }
+      }
+    }
+
+    // Extract event type
+    if (!event.type) {
+      const typeMatch = (message + ' ' + response).match(/\b(wedding|corporate|birthday|conference|meetup|workshop|seminar|tech talk|launch|gala|party)\b/i);
+      if (typeMatch) eventUpdates.type = typeMatch[1].toLowerCase();
+    }
+
+    // Update status based on activity
+    if (toolsUsed.length > 0 && event.status === 'planning') {
+      const userConfirmed = /\b(finalize|confirmed|booked|go with|proceed|yes|book it)\b/i.test(message);
+      if (userConfirmed) {
+        eventUpdates.status = 'confirmed';
+      }
+    }
+
+    if (Object.keys(eventUpdates).length > 0) {
+      await updateEvent(eventId!, eventUpdates);
+    }
+
     // Save assistant response to conversation
     await createMessage(eventId!, 'assistant', response, {
       agentName: 'Eventiq',
       creditsCost: totalCost,
       toolsUsed,
+      options: options.length > 0 ? options : undefined,
+      thinking: thinking.length > 0 ? thinking : undefined,
     });
 
     return {

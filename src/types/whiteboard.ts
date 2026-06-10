@@ -1,10 +1,9 @@
-import type { Node, Viewport } from 'reactflow';
+// Whiteboard types — kept for API compatibility but no longer uses ReactFlow
 
 export interface WhiteboardState {
   eventId: string;
   nodes: WhiteboardNode[];
   edges: WhiteboardEdge[];
-  viewport: Viewport;
 }
 
 export type WhiteboardNodeType =
@@ -17,7 +16,7 @@ export type WhiteboardNodeType =
   | 'communication-log'
   | 'analytics-widget';
 
-export interface WhiteboardNode extends Node {
+export interface WhiteboardNode {
   id: string;
   type: WhiteboardNodeType;
   position: { x: number; y: number };
@@ -41,8 +40,6 @@ export interface WhiteboardEdge {
   id: string;
   source: string;
   target: string;
-  from: string;
-  to: string;
   label?: string;
   animated?: boolean;
 }
