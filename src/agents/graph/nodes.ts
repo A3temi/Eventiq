@@ -9,7 +9,7 @@ import type { AgentStateType } from './state';
  */
 function createLLM(tools: any[] = []) {
   const llm = new ChatBedrockConverse({
-    model: 'anthropic.claude-sonnet-4-20250514-v1:0',
+    model: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
     region: process.env.AWS_REGION || 'us-east-1',
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
