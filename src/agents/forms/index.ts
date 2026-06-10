@@ -1,4 +1,4 @@
-import { ChatBedrockConverse } from '@langchain/aws';
+import { createFastLLM } from '@/lib/llm';
 import { StateGraph, Annotation } from '@langchain/langgraph';
 import { HumanMessage, SystemMessage, BaseMessage } from '@langchain/core/messages';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
@@ -210,16 +210,7 @@ const FormsState = Annotation.Root({
 type FormsStateType = typeof FormsState.State;
 
 function createHaiku() {
-  return new ChatBedrockConverse({
-    model: 'us.anthropic.claude-3-haiku-20240307-v1:0',
-    region: process.env.AWS_REGION || 'us-east-1',
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-    temperature: 0.2,
-    maxTokens: 4096,
-  }).bindTools(tools);
+  return createFastLLM().bindTools(tools);
 }
 
 async function agentNode(state: FormsStateType) {

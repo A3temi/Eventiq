@@ -1,8 +1,8 @@
-import { ChatBedrockConverse } from '@langchain/aws';
 import { SystemMessage, BaseMessage } from '@langchain/core/messages';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { orchestratorTools } from './tools';
 import type { AgentStateType } from './state';
+import { createPrimaryLLM } from '@/lib/llm';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LLM FACTORY
@@ -10,16 +10,7 @@ import type { AgentStateType } from './state';
 
 /** Claude Sonnet — orchestrator (complex reasoning, delegation decisions) */
 function createSonnet() {
-  const llm = new ChatBedrockConverse({
-    model: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
-    region: process.env.AWS_REGION || 'us-east-1',
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-    temperature: 0.3,
-    maxTokens: 4096,
-  });
+  const llm = createPrimaryLLM();
   return llm.bindTools(orchestratorTools);
 }
 
