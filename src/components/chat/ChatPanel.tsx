@@ -10,6 +10,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { ReasoningTrace } from './ReasoningTrace';
 import { ThinkingTrace } from './ThinkingTrace';
 import { OptionCardCarousel } from './OptionCard';
+import { MarkdownMessage } from './MarkdownMessage';
 import type { OptionCard } from '@/types/chat';
 
 export function ChatPanel() {
@@ -24,6 +25,20 @@ export function ChatPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Load messages when switching events
+  useEffect(() => {
+    if (activeEventId && session?.user?.email) {
+      fetch(`/api/events/${activeEventId}/messages`)
+        .then((r) => r.ok ? r.json() : { messages: [] })
+        .then((data) => {
+          if (data.messages && data.messages.length > 0) {
+            useChatStore.getState().setMessages(data.messages);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [activeEventId, session]);
 
   useEffect(() => {
     if (session?.user?.email) {
@@ -177,7 +192,7 @@ export function ChatPanel() {
                     )}
                   </div>
                 )}
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                <MarkdownMessage content={msg.content} isUser={msg.role === 'user'} />
 
                 {/* Thinking trace */}
                 {msg.metadata?.thinking && msg.metadata.thinking.length > 0 && (
