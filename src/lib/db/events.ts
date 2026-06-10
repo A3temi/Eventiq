@@ -1,4 +1,4 @@
-import { PutCommand, GetCommand, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, GetCommand, UpdateCommand, QueryCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, TABLES, ttl90Days } from '../dynamodb';
 import type { EventBrief, EventStatus } from '@/types/event';
 import { v4 as uuid } from 'uuid';
@@ -86,4 +86,11 @@ export async function listUserEvents(userId: string): Promise<EventBrief[]> {
 
 export async function updateEventStatus(eventId: string, status: EventStatus): Promise<void> {
   await updateEvent(eventId, { status });
+}
+
+export async function deleteEvent(eventId: string): Promise<void> {
+  await docClient.send(new DeleteCommand({
+    TableName: TABLES.events,
+    Key: { PK: `EVENT#${eventId}`, SK: 'METADATA' },
+  }));
 }

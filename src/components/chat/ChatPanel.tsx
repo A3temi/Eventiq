@@ -3,10 +3,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { useChatStore } from '@/stores/chat-store';
+import { useAppStore } from '@/stores/app-store';
 import { Send, Paperclip, Bot, User, Loader2, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalCard } from './ApprovalCard';
 import { ReasoningTrace } from './ReasoningTrace';
+import { ThinkingTrace } from './ThinkingTrace';
+import { OptionCardCarousel } from './OptionCard';
+import type { OptionCard } from '@/types/chat';
 
 export function ChatPanel() {
   const [input, setInput] = useState('');
@@ -14,6 +18,8 @@ export function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { data: session, status } = useSession();
   const { messages, isLoading, pendingApprovals } = useChatStore();
+  const activeEventId = useAppStore((s) => s.activeEventId);
+  const fetchEvents = useAppStore((s) => s.fetchEvents);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -54,7 +60,7 @@ export function ChatPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMessage.content,
-          eventId: null,
+          eventId: activeEventId,
         }),
       });
 
@@ -63,6 +69,13 @@ export function ChatPanel() {
       if (response.status === 401) {
         signIn('google');
         return;
+      }
+
+      // Update active event if one was created
+      if (data.eventId && !activeEventId) {
+        useAppStore.getState().setActiveEvent(data.eventId);
+        // Refresh events list
+        fetchEvents();
       }
 
       useChatStore.getState().addMessage({
@@ -88,6 +101,21 @@ export function ChatPanel() {
     } finally {
       useChatStore.getState().setLoading(false);
     }
+  };
+
+  const handleOptionSelect = (option: OptionCard) => {
+    const confirmMessage = `I'd like to go with "${option.name}"${option.price ? ` (${option.price})` : ''}. Please proceed with this choice.`;
+    setInput(confirmMessage);
+    // Auto-submit
+    const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+    setTimeout(() => {
+      setInput(confirmMessage);
+      handleSubmit(fakeEvent);
+    }, 100);
+  };
+
+  const handleShuffle = () => {
+    setInput('Can you search for more options? I want to see different alternatives.');
   };
 
   return (
@@ -134,7 +162,7 @@ export function ChatPanel() {
                 {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
               </div>
               <div className={cn(
-                'rounded-lg p-3 max-w-prose',
+                'rounded-xl p-3 max-w-prose',
                 msg.role === 'user'
                   ? 'bg-primary text-primary-foreground'
                   : msg.role === 'system'
@@ -150,6 +178,22 @@ export function ChatPanel() {
                   </div>
                 )}
                 <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+
+                {/* Thinking trace */}
+                {msg.metadata?.thinking && msg.metadata.thinking.length > 0 && (
+                  <ThinkingTrace steps={msg.metadata.thinking} />
+                )}
+
+                {/* Option cards */}
+                {msg.metadata?.options && msg.metadata.options.length > 0 && (
+                  <OptionCardCarousel
+                    options={msg.metadata.options}
+                    onSelect={handleOptionSelect}
+                    onShuffle={handleShuffle}
+                  />
+                )}
+
+                {/* Legacy reasoning trace */}
                 {msg.metadata?.reasoningTrace && (
                   <ReasoningTrace steps={msg.metadata.reasoningTrace} />
                 )}
@@ -166,7 +210,7 @@ export function ChatPanel() {
             <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
               <Loader2 className="w-4 h-4 animate-spin" />
             </div>
-            <div className="bg-muted rounded-lg p-3">
+            <div className="bg-muted rounded-xl p-3">
               <p className="text-sm text-muted-foreground">Thinking...</p>
             </div>
           </div>

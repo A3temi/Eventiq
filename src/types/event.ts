@@ -14,6 +14,7 @@ export interface EventBrief {
   location?: string;
   preferences: Record<string, unknown>;
   status: EventStatus;
+  pinned?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +27,8 @@ export interface EventSummary {
   date: string;
   status: EventStatus;
   lastActivity: string;
+  pinned?: boolean;
+  summary?: string;
 }
 
 export interface ConversationContext {

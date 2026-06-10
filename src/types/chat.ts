@@ -9,6 +9,24 @@ export interface ChatMessage {
   metadata?: MessageMetadata;
 }
 
+export interface OptionCard {
+  type: string;
+  name: string;
+  price?: string;
+  description: string;
+  url?: string;
+  score?: number;
+  category?: string;
+}
+
+export interface ThinkingStep {
+  tool: string;
+  query?: string;
+  source?: string;
+  url?: string;
+  status: 'completed' | 'failed';
+}
+
 export interface MessageMetadata {
   agentName?: string;
   reasoningTrace?: ReasoningStep[];
@@ -16,6 +34,9 @@ export interface MessageMetadata {
   statusUpdate?: AgentStatusUpdate;
   comparisonTable?: ComparisonData;
   creditsCost?: number;
+  options?: OptionCard[];
+  thinking?: ThinkingStep[];
+  toolsUsed?: string[];
 }
 
 export interface FileAttachment {
