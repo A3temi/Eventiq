@@ -13,6 +13,7 @@ import { MyEventsPage } from '@/components/eventiq/MyEventsPage';
 import { VendorDetailPanel } from '@/components/eventiq/VendorDetailPanel';
 import { NewEventChat } from '@/components/eventiq/NewEventChat';
 import { EventAgentChat } from '@/components/eventiq/EventAgentChat';
+import { LandingPage } from '@/components/landing/LandingPage';
 import { useAppStore } from '@/stores/app-store';
 import { useChatStore } from '@/stores/chat-store';
 import {
@@ -24,7 +25,21 @@ import {
 type EventView = 'dashboard' | 'chat';
 
 export default function Home() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+
+  // Show landing page for unauthenticated users
+  if (status === 'unauthenticated') {
+    return <LandingPage />;
+  }
+
+  // Show loading while checking auth
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   // Active event lives in the app-store so whiteboard/chat logic keeps working.
   const activeEventId = useAppStore((s) => s.activeEventId);
