@@ -17,8 +17,6 @@ interface SidebarProps {
 const nav: { id: Tab; label: string; icon: typeof CalendarDays }[] = [
   { id: 'events', label: 'My Events', icon: LayoutGrid },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-  { id: 'providers', label: 'Providers', icon: Users },
-  { id: 'billing', label: 'Billing', icon: CreditCard },
 ];
 
 export function Sidebar({ active, onChange, onNew, mobileOpen = false, onMobileClose }: SidebarProps) {

@@ -13,8 +13,6 @@ import { MyEventsPage } from '@/components/eventiq/MyEventsPage';
 import { VendorDetailPanel } from '@/components/eventiq/VendorDetailPanel';
 import { NewEventChat } from '@/components/eventiq/NewEventChat';
 import { EventAgentChat } from '@/components/eventiq/EventAgentChat';
-import { FloatingAgentChat } from '@/components/eventiq/FloatingAgentChat';
-import { WhiteboardView } from '@/components/whiteboard/WhiteboardView';
 import { useAppStore } from '@/stores/app-store';
 import { useChatStore } from '@/stores/chat-store';
 import {
@@ -23,7 +21,7 @@ import {
   useAllEventModels,
 } from '@/stores/event-models-store';
 
-type EventView = 'dashboard' | 'whiteboard' | 'chat';
+type EventView = 'dashboard' | 'chat';
 
 export default function Home() {
   const { data: session } = useSession();
@@ -80,14 +78,11 @@ export default function Home() {
     if (idsKey) void fetchAllDetails(idsKey.split(','));
   }, [idsKey, fetchAllDetails]);
 
-  // 5s details polling for the active event; stop on change/unmount.
-  // Paused while the Whiteboard is visible — WhiteboardView polls the same
-  // /details endpoint itself every 5s, so polling both would double requests.
-  const whiteboardVisible = !creating && tab === 'events' && eventView === 'whiteboard';
+  // Poll event details every 5s for the active event.
   useEffect(() => {
-    if (activeEventId && !whiteboardVisible) startPolling(activeEventId);
+    if (activeEventId) startPolling(activeEventId);
     return () => stopPolling();
-  }, [activeEventId, whiteboardVisible, startPolling, stopPolling]);
+  }, [activeEventId, startPolling, stopPolling]);
 
   const activeEvent = useEventModel(activeEventId);
   const openVendor = useMemo(
@@ -180,17 +175,17 @@ export default function Home() {
                     // h-full column so the chat composer / whiteboard input pin
                     // to the bottom and their message panes scroll internally.
                     <div className="h-full flex flex-col">
-                      <div className="shrink-0 px-4 sm:px-6 pt-4 flex items-center justify-between gap-3 flex-wrap">
+                      <div className="shrink-0 px-4 sm:px-6 pt-4 flex flex-col sm:flex-row items-center gap-3">
                         <button
                           onClick={handleBack}
-                          className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                          className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 sm:absolute sm:left-6"
                         >
-                          <ArrowLeft className="h-3.5 w-3.5" /> Back to all events
+                          <ArrowLeft className="h-3.5 w-3.5" /> Back
                         </button>
-                        <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
+                        <div className="mx-auto inline-flex rounded-lg border border-border p-1 bg-muted/40">
                           <button
                             onClick={() => setEventView('dashboard')}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition ${
+                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
                               eventView === 'dashboard'
                                 ? 'bg-background shadow-sm text-foreground'
                                 : 'text-muted-foreground hover:text-foreground'
@@ -199,24 +194,14 @@ export default function Home() {
                             Dashboard
                           </button>
                           <button
-                            onClick={() => setEventView('whiteboard')}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition ${
-                              eventView === 'whiteboard'
-                                ? 'bg-background shadow-sm text-foreground'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                          >
-                            Whiteboard
-                          </button>
-                          <button
                             onClick={() => setEventView('chat')}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition ${
+                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
                               eventView === 'chat'
                                 ? 'bg-background shadow-sm text-foreground'
                                 : 'text-muted-foreground hover:text-foreground'
                             }`}
                           >
-                            Agent chat
+                            Agent Chat
                           </button>
                         </div>
                       </div>
@@ -226,11 +211,6 @@ export default function Home() {
                             event={activeEvent}
                             onClose={() => setEventView('dashboard')}
                           />
-                        </div>
-                      )}
-                      {eventView === 'whiteboard' && (
-                        <div className="flex-1 min-h-0 overflow-hidden">
-                          <WhiteboardView />
                         </div>
                       )}
                       {eventView === 'dashboard' && (
@@ -257,8 +237,6 @@ export default function Home() {
           />
         )}
       </main>
-
-      <FloatingAgentChat events={events} activeEventId={activeEventId} />
     </div>
   );
 }

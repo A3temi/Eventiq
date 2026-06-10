@@ -39,6 +39,23 @@ function dataUrlBytes(dataUrl: string): number {
   return Math.floor((base64.length * 3) / 4);
 }
 
+/** Parse duration in minutes between two time strings like "7:00 PM" and "8:00 PM" */
+function parseDuration(startTime: string, nextStartTime?: string): number {
+  if (!nextStartTime) return 30; // Default 30min for last item
+  const toMinutes = (t: string): number => {
+    const match = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!match) return 0;
+    let hours = parseInt(match[1]);
+    const minutes = parseInt(match[2]);
+    const period = match[3]?.toUpperCase();
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
+  const diff = toMinutes(nextStartTime) - toMinutes(startTime);
+  return diff > 0 ? diff : 30;
+}
+
 async function compressImage(file: File): Promise<string> {
   const sourceUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -231,15 +248,46 @@ export function OverviewTab({ event, onOpenVendor }: Props) {
                   {isValid(eventDate) ? format(eventDate, 'EEEE, MMM d') : ''}
                 </span>
               </div>
-              <div className="divide-y divide-border lg:max-h-[28rem] lg:overflow-y-auto flex-1">
-                {event.schedule.map((s, i) => (
-                  <div key={i} className="grid grid-cols-[64px_1fr] gap-4 py-3 items-start">
-                    <div className="text-xs font-mono text-muted-foreground pt-1">{s.time}</div>
-                    <div className="rounded-lg border-l-4 border-primary bg-primary/5 px-3 py-2">
-                      <div className="text-sm font-medium">{s.title}</div>
+              <div className="lg:max-h-[28rem] lg:overflow-y-auto flex-1 space-y-1">
+                {event.schedule.map((s, i) => {
+                  // Calculate proportional height based on duration
+                  const duration = parseDuration(s.time, event.schedule![i + 1]?.time);
+                  const minHeight = Math.max(40, duration * 1.2); // 1.2px per minute, min 40px
+                  const statusColor = s.status === 'confirmed'
+                    ? 'border-l-green-500 bg-green-500/5'
+                    : s.status === 'discussing'
+                    ? 'border-l-yellow-500 bg-yellow-500/5'
+                    : 'border-l-red-400 bg-red-400/5';
+                  const statusDot = s.status === 'confirmed'
+                    ? 'bg-green-500'
+                    : s.status === 'discussing'
+                    ? 'bg-yellow-500'
+                    : 'bg-red-400';
+
+                  return (
+                    <div
+                      key={i}
+                      className={`grid grid-cols-[72px_1fr] gap-3 items-stretch`}
+                      style={{ minHeight: `${minHeight}px` }}
+                    >
+                      <div className="text-xs font-mono text-muted-foreground pt-2 text-right pr-2 border-r border-border">
+                        {s.time}
+                      </div>
+                      <div className={`rounded-lg border-l-4 ${statusColor} px-3 py-2 flex items-center gap-2`}>
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{s.title}</div>
+                          {s.speaker && (
+                            <div className="text-xs text-muted-foreground">{s.speaker}</div>
+                          )}
+                        </div>
+                        {duration > 0 && (
+                          <span className="text-[10px] text-muted-foreground shrink-0">{duration}min</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

@@ -58,12 +58,6 @@ export function MyEventsPage({ events, onSelect, onNew }: Props) {
             {filtered.length} of {events.length} {events.length === 1 ? 'event' : 'events'}
           </p>
         </div>
-        <button
-          onClick={onNew}
-          className="shrink-0 rounded-xl bg-primary text-primary-foreground text-sm font-medium px-3.5 py-2 flex items-center gap-2 hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" /> <span className="hidden sm:inline">New event</span>
-        </button>
       </div>
 
       <div className="rounded-xl border border-border bg-card/40 p-3 mb-5 flex flex-col md:flex-row md:items-center gap-3">
