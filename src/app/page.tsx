@@ -46,6 +46,42 @@ export default function Home() {
   const [eventView, setEventView] = useState<EventView>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Adapted view models for every event
+  const events = useAllEventModels();
+  const activeEvent = useEventModel(activeEventId);
+
+  // theme bootstrap
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = localStorage.getItem('eventiq-theme');
+    const prefers = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const enable = stored ? stored === 'dark' : prefers;
+    setDark(enable);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.classList.toggle('dark', dark);
+    try { localStorage.setItem('eventiq-theme', dark ? 'dark' : 'light'); } catch {}
+  }, [dark]);
+
+  // Fetch events once the user is authenticated
+  useEffect(() => {
+    if (session?.user?.email) fetchEvents();
+  }, [session, fetchEvents]);
+
+  // Hydrate details for all known events
+  const idsKey = events.map((e) => e.id).join(',');
+  useEffect(() => {
+    if (idsKey) void fetchAllDetails(idsKey.split(','));
+  }, [idsKey, fetchAllDetails]);
+
+  // Poll event details every 5s for the active event
+  useEffect(() => {
+    if (activeEventId) startPolling(activeEventId);
+    return () => stopPolling();
+  }, [activeEventId, startPolling, stopPolling]);
+
   // Show landing page for unauthenticated users
   if (status === 'unauthenticated') {
     return <LandingPage />;
@@ -60,48 +96,6 @@ export default function Home() {
     );
   }
 
-  // Active event lives in the app-store so whiteboard/chat logic keeps working.
-
-  // theme bootstrap
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = localStorage.getItem('eventiq-theme');
-    const prefers = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const enable = stored ? stored === 'dark' : prefers;
-    setDark(enable);
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    document.documentElement.classList.toggle('dark', dark);
-    try {
-      localStorage.setItem('eventiq-theme', dark ? 'dark' : 'light');
-    } catch {}
-  }, [dark]);
-
-  // Fetch events once the user is authenticated (mirrors old EventSidebar).
-  useEffect(() => {
-    if (session?.user?.email) {
-      fetchEvents();
-    }
-  }, [session, fetchEvents]);
-
-  // Adapted view models for every event (summary + cached details).
-  const events = useAllEventModels();
-
-  // Hydrate details for all known events so summaries/calendar/providers are rich.
-  const idsKey = events.map((e) => e.id).join(',');
-  useEffect(() => {
-    if (idsKey) void fetchAllDetails(idsKey.split(','));
-  }, [idsKey, fetchAllDetails]);
-
-  // Poll event details every 5s for the active event.
-  useEffect(() => {
-    if (activeEventId) startPolling(activeEventId);
-    return () => stopPolling();
-  }, [activeEventId, startPolling, stopPolling]);
-
-  const activeEvent = useEventModel(activeEventId);
   const openVendor = useMemo(
     () => activeEvent?.vendors.find((v) => v.id === openVendorId) ?? null,
     [activeEvent, openVendorId],

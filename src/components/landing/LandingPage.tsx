@@ -128,7 +128,7 @@ export function LandingPage() {
       <footer className="border-t border-border py-8 px-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <img src="/logo-wide.svg" alt="Eventiq" className="h-5 opacity-60" />
-          <p className="text-xs text-muted-foreground">Built for NEXT Hackathon • SuperAI Singapore 2025</p>
+          <p className="text-xs text-muted-foreground">Built for NEXT Hackathon • SuperAI Singapore 2026</p>
         </div>
       </footer>
     </div>
